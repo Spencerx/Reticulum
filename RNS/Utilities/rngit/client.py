@@ -570,7 +570,9 @@ class ReticulumGitClient():
                 create_result = subprocess.run(create_cmd, capture_output=True, text=True, check=False)
 
                 if create_result.returncode == 0:
-                    if result.stderr: git_stderr.write(result.stderr.decode("utf-8"))
+                    if create_result.stderr:
+                        # git_stderr.write(create_result.stderr)
+                        pass
                 else:
                     if "empty bundle" in create_result.stderr.lower():
                         # All objects reachable from local_ref already exist on
