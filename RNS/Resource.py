@@ -769,18 +769,18 @@ class Resource:
         # Prepare the next segment for advertisement
         RNS.log(f"Preparing segment {self.segment_index+1} of {self.total_segments} for resource {self}", RNS.LOG_DEBUG)
         self.preparing_next_segment = True
-        self.next_segment = Resource(
-            self.input_file, self.link,
-            callback = self.callback,
-            segment_index = self.segment_index+1,
-            original_hash=self.original_hash,
-            progress_callback = self.__progress_callback,
-            request_id = self.request_id,
-            is_response = self.is_response,
-            advertise = False,
-            auto_compress = self.auto_compress_option,
-            sent_metadata_size = self.metadata_size,
-        )
+        self.next_segment = Resource(self.input_file, self.link,
+                                     callback = self.callback,
+                                     segment_index = self.segment_index+1,
+                                     original_hash=self.original_hash,
+                                     progress_callback = self.__progress_callback,
+                                     request_id = self.request_id,
+                                     is_response = self.is_response,
+                                     advertise = False,
+                                     auto_compress = self.auto_compress_option,
+                                     sent_metadata_size = self.metadata_size)
+        if self.__progress_callback:
+            self.next_segment.progress_callback(self.__progress_callback)
 
     def validate_proof(self, proof_data):
         if not self.status == Resource.FAILED:
@@ -1071,8 +1071,7 @@ class Resource:
                 self.retries_left = 3
 
             if self.__progress_callback != None:
-                try:
-                    self.__progress_callback(self)
+                try: self.__progress_callback(self)
                 except Exception as e:
                     RNS.log("Error while executing progress callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
 
@@ -1125,6 +1124,7 @@ class Resource:
 
     def progress_callback(self, callback):
         self.__progress_callback = callback
+        if self.next_segment: self.next_segment.progress_callback(callback)
 
     def get_progress(self):
         """
