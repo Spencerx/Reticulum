@@ -602,8 +602,42 @@ class ReticulumGitNode():
                     return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
 
             elif operations:
-                # TODO: Implement
-                pass
+                if not type(operations) == list: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid data for operations"
+
+                try:
+                    for op in operations:
+                        action = op.get("action", "")
+                        ref    = op.get("ref", "")
+                        sha    = op.get("sha", "")
+                        op_force = op.get("force", False)
+
+                        if action != "update_ref": return self.RES_INVALID_REQ.to_bytes(1, "big") + f"Unknown operation: {action}".encode("utf-8")
+                        if not ref.startswith("refs/"): return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid ref"
+                        if not sha or len(sha) < 40: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid SHA"
+
+                        # Verify the target object exists in the repository
+                        cat_result = subprocess.run(["git", "cat-file", "-t", sha], cwd=repository_path, capture_output=True, check=False)
+                        if cat_result.returncode != 0: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + f"Object {sha} does not exist in repository".encode("utf-8")
+
+                        # Check force flag: If the ref already exists and
+                        # points to a different SHA, the push must be forced.
+                        rev_result = subprocess.run(["git", "rev-parse", ref], cwd=repository_path, capture_output=True, text=True, check=False)
+                        if rev_result.returncode == 0:
+                            existing_sha = rev_result.stdout.strip()
+                            if existing_sha != sha and not op_force:
+                                return self.RES_DISALLOWED.to_bytes(1, "big") + f"Ref {ref} already exists at different SHA (force required)".encode("utf-8")
+
+                        RNS.log(f"Updating ref {ref} to {sha} in {group_name}/{repository_name}", RNS.LOG_DEBUG)
+                        execv = ["git", "update-ref", ref, sha]
+                        result = subprocess.run(execv, cwd=repository_path, capture_output=True, check=False)
+
+                        if result.returncode != 0: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + result.stderr
+
+                    return b"\x00"
+
+                except Exception as e:
+                    RNS.log(f"Error while handling push operations for {group_name}/{repository_name}: {e}", RNS.LOG_ERROR)
+                    return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
 
             else: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request data"
 
