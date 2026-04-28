@@ -605,7 +605,7 @@ class ReticulumGitNode():
                 # TODO: Implement
                 pass
 
-            else: self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request data"
+            else: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request data"
 
     def handle_delete(self, path, data, request_id, remote_identity, requested_at):
         RNS.log(f"Delete request from remote {remote_identity}", RNS.LOG_DEBUG)
