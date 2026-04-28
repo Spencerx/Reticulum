@@ -404,15 +404,15 @@ class ReticulumGitClient():
 
         response_text = payload.decode("utf-8")
 
-        if for_push:
-            self.remote_refs = {}
-            for line in response_text.split("\n"):
-                line = line.strip()
-                if not line: continue
-                parts = line.split(" ", 1)
-                if len(parts) == 2:
-                    sha, ref_name = parts
-                    self.remote_refs[ref_name] = sha
+        self.remote_refs = {}
+        for line in response_text.split("\n"):
+            line = line.strip()
+            if not line: continue
+            parts = line.split(" ", 1)
+            if len(parts) == 2:
+                sha, ref_name = parts
+                if ref_name == "HEAD": continue
+                self.remote_refs[ref_name] = sha
 
         git_stdout.write(response_text)
         git_stdout.write("\n") # Required to terminate list
@@ -439,6 +439,15 @@ class ReticulumGitClient():
 
         if not fetch_queue: return
 
+        # Build a global have list from all remote refs that the client already has objects for
+        have_shas = []
+        for sha in self.remote_refs.values():
+            try:
+                result = subprocess.run(["git", "cat-file", "-t", sha], capture_output=True, check=False)
+                if result.returncode == 0: have_shas.append(sha)
+            
+            except Exception as e: RNS.log(f"Could not verify remote SHA {sha} locally: {e}", RNS.LOG_WARNING)
+
         while fetch_queue:
             batch = fetch_queue[:ref_batch_size]
             fetch_queue = fetch_queue[ref_batch_size:]
@@ -459,18 +468,24 @@ class ReticulumGitClient():
                 refs_list.append(ref_entry)
 
             ref_names = [ref for _, ref in batch]
-            RNS.log(f"Fetching batch of {len(refs_list)} refs: {ref_names}", RNS.LOG_DEBUG)
+            RNS.log(f"Fetching batch of {len(refs_list)} refs: {ref_names} (have {len(have_shas)} common objects)", RNS.LOG_DEBUG)
 
             request_data = { self.IDX_REPOSITORY: self.repo_path, "refs": refs_list }
+            if have_shas: request_data["have"] = have_shas
+
             response, metadata = self.send_request(self.PATH_FETCH, request_data)
 
             if not response: self.abort(f"No data in fetch response for batch")
             if not metadata:
                 if not isinstance(response, bytes): self.abort(f"Invalid fetch response for batch")
                 status_byte = response[0]
-                payload = response[1:]
-                if status_byte != 0:
-                    error_msg = payload.decode('utf-8', errors='ignore')
+
+                if status_byte == 0:
+                    RNS.log(f"Server returned empty bundle, all objects already exist locally", RNS.LOG_DEBUG)
+                    continue
+
+                else:
+                    error_msg = response[1:].decode('utf-8', errors='ignore')
                     self.abort(f"Fetch failed for batch: {error_msg}")
 
             else:
@@ -611,7 +626,7 @@ class ReticulumGitClient():
             # When all reachable objects already exist on the remote, send a
             # direct ref update operation instead of a bundle.
             if bundle_empty:
-                openration   = {"action": "update_ref", "ref": remote_ref, "sha": local_sha, "force": force}
+                operation    = {"action": "update_ref", "ref": remote_ref, "sha": local_sha, "force": force}
                 request_data = { self.IDX_REPOSITORY: self.repo_path,
                                  "operations": [operation] }
 

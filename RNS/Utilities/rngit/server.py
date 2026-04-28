@@ -542,10 +542,31 @@ class ReticulumGitNode():
 
                 for r in refs:
                     execv.append(r["ref"])
-                    if "have" in r and r["have"]: execv.append(f"^{r['have']}")
+                    # Per-ref have: The client already has this ancestor,
+                    # so the server can exclude objects reachable from it.
+                    if "have" in r and r["have"]:
+                        have_sha = r["have"]
+                        cat_result = subprocess.run(["git", "cat-file", "-t", have_sha], cwd=repository_path, capture_output=True, check=False)
+                        if cat_result.returncode == 0: execv.append(f"^{have_sha}")
+                        else: RNS.log(f"Client have-sha {have_sha} not found in repository, skipping", RNS.LOG_WARNING)
 
-                result = subprocess.run(execv, cwd=repository_path, capture_output=True, check=False)
-                if result.returncode != 0: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + result.stderr
+                # Global have list: SHAs of objects the client already has.
+                # Exclude objects reachable from these to produce thin bundles.
+                have_shas = data.get("have", [])
+                for sha in have_shas:
+                    cat_result = subprocess.run(["git", "cat-file", "-t", sha], cwd=repository_path, capture_output=True, check=False)
+                    if cat_result.returncode == 0: execv.append(f"^{sha}")
+                    else: RNS.log(f"Client have-sha {sha} not found in repository, skipping", RNS.LOG_WARNING)
+
+                result = subprocess.run(execv, cwd=repository_path, capture_output=True, text=True, check=False)
+                if result.returncode != 0:
+                    if "empty bundle" in result.stderr.lower():
+                        # All objects reachable from the requested refs are already
+                        # available to the client. Return success with no bundle data.
+                        RNS.log(f"Empty bundle for {ref_names}, all objects already on client", RNS.LOG_DEBUG)
+                        return b"\x00"
+                    
+                    else: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + result.stderr.encode("utf-8")
                 
                 return open(bundle_path, "rb"), {self.IDX_RESULT_CODE: self.RES_OK}
 
