@@ -536,7 +536,23 @@ class ReticulumGitClient():
                 bundle_path = tmpdir + "/push.bundle"
 
                 create_cmd = ["git", "bundle", "create", bundle_path, local_ref]
-                if remote_ref in self.remote_refs: create_cmd.append(f"^{self.remote_refs[remote_ref]}")
+
+                # Exclude all remote ref SHAs that exist locally, so the
+                # bundle only contains objects the remote doesn't already have
+                exclude_count = 0
+                for sha in self.remote_refs.values():
+                    try:
+                        # We need to verify Each SHA actually exists locally, since git
+                        # bundle create will fail if a ^<sha> argument references an object
+                        # not present in the local repository.
+                        result = subprocess.run(["git", "cat-file", "-t", sha], capture_output=True, check=False)
+                        if result.returncode == 0:
+                            create_cmd.append(f"^{sha}")
+                            exclude_count += 1
+                    
+                    except Exception as e: RNS.log(f"Could not verify remote SHA {sha} locally: {e}", RNS.LOG_WARNING)
+
+                RNS.log(f"Excluding {exclude_count}/{len(self.remote_refs)} remote refs for {local_ref}", RNS.LOG_DEBUG)
 
                 if progress_enabled: create_cmd.insert(3, "--progress")
 
