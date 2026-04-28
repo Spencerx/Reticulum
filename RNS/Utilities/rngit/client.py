@@ -283,6 +283,8 @@ class ReticulumGitClient():
         self.request_event.clear()
         self.request_response  = None
         self.response_metadata = None
+        self.previous_progress = 0
+        self.progress_updated_at = None
         
         RNS.log(f"Sending request: {path}", RNS.LOG_DEBUG)
         request_receipt = self.link.request(path, data, progress_callback=self._on_progress, response_callback=self._response_ready, failed_callback=self._response_failed, timeout=timeout)
