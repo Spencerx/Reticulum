@@ -1,3 +1,32 @@
+### 2026-04-28: RNS 1.2.0
+
+This release brings the ability to use Git natively over Reticulum networks, adds the `rnsh` program as part of the included utilities, and additionally includes several improvements and performance optimizations.
+
+**Changes**
+- Added Reticulum Git Repositories Node utility as part of included utility programs.
+- Added git remote helper to interact with git repositories over Reticulum.
+- Added the `rnsh` program to the included utilities.
+- Added LocalInterface client TX hold on client app sleep on Android.
+- Added AutoInterface filters for `rmnet` interfaces on Android.
+- Added inbound packet wait during transport core initialization.
+- Added the ability to set logfile destination before RNS initialization.
+- Added automatic active link teardown on instance shutdown.
+- Improved link teardown on SIGINT/SIGTERM.
+- Improved ratchet cleaning.
+
+**Release Hashes**
+```
+fcb2867ea43edade0b562c0053172e8d5c1a954e6413a310b5a91b23d4049114 rns-1.2.0-py3-none-any.whl
+5a857a2117df7c20af9eeab70f4ab773508385c92df620d95674fb809d92f5b8 rnspure-1.2.0-py3-none-any.whl
+```
+
+**Release Signatures**
+Release artifacts include `rsg` signature files that can be validated against the RNS release signing identity `<bc7291552be7a58f361522990465165c>` using `rnid`:
+
+```sh
+rnid -i bc7291552be7a58f361522990465165c -V rns-1.2.0-py3-none-any.whl.rsg
+```
+
 ### 2026-04-22: RNS 1.1.9
 
 This maintenance release fixes a critical security issue, that would allow an attacker to craft a BZ2 decompression bomb via Resource transfers or Buffer StreamDataMessage, causing an out-of-memory condition and crashing the receiving process via OOM killer.
