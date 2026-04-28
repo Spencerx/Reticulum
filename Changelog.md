@@ -16,8 +16,7 @@ This release brings the ability to use Git natively over Reticulum networks, add
 
 **Release Hashes**
 ```
-fcb2867ea43edade0b562c0053172e8d5c1a954e6413a310b5a91b23d4049114 rns-1.2.0-py3-none-any.whl
-5a857a2117df7c20af9eeab70f4ab773508385c92df620d95674fb809d92f5b8 rnspure-1.2.0-py3-none-any.whl
+
 ```
 
 **Release Signatures**
