@@ -532,6 +532,17 @@ class ReticulumGitClient():
 
             stderr_arg = sys.stderr if progress_enabled else subprocess.DEVNULL
 
+            # Resolve the SHA that local_ref points to
+            sha_result = subprocess.run(["git", "rev-parse", local_ref], capture_output=True, text=True, check=False)
+            if sha_result.returncode != 0:
+                error_msg = f"Could not resolve local ref {local_ref}"
+                git_stdout.write(f"error {remote_ref} {self.escape_for_stdout(error_msg)}\n")
+                git_stdout.flush()
+                continue
+
+            local_sha = sha_result.stdout.strip()
+
+            bundle_empty = False
             with tempfile.TemporaryDirectory() as tmpdir:
                 bundle_path = tmpdir + "/push.bundle"
 
@@ -542,7 +553,7 @@ class ReticulumGitClient():
                 exclude_count = 0
                 for sha in self.remote_refs.values():
                     try:
-                        # We need to verify Each SHA actually exists locally, since git
+                        # We need to verify each SHA actually exists locally, since git
                         # bundle create will fail if a ^<sha> argument references an object
                         # not present in the local repository.
                         result = subprocess.run(["git", "cat-file", "-t", sha], capture_output=True, check=False)
@@ -556,19 +567,52 @@ class ReticulumGitClient():
 
                 if progress_enabled: create_cmd.insert(3, "--progress")
 
-                create_result = subprocess.run(create_cmd, stderr=stderr_arg, stdout=subprocess.DEVNULL)
+                create_result = subprocess.run(create_cmd, capture_output=True, text=True, check=False)
 
-                if create_result.returncode != 0:
-                    error_msg = "Bundle creation failed"
-                    git_stdout.write(f"error {remote_ref} {self.escape_for_stdout(error_msg)}\n")
-                    git_stdout.flush()
-                    continue
+                if create_result.returncode == 0:
+                    if result.stderr: git_stderr.write(result.stderr.decode("utf-8"))
+                else:
+                    if "empty bundle" in create_result.stderr.lower():
+                        # All objects reachable from local_ref already exist on
+                        # the remote. In this case, no bundle is needed and we can
+                        # update the ref directly via the operations path instead.
+                        bundle_empty = True
+                        RNS.log(f"Empty bundle for {local_ref}, all objects already on remote", RNS.LOG_DEBUG)
 
-                with open(bundle_path, "rb") as f: bundle_data = f.read()
+                    else:
+                        if progress_enabled and create_result.stderr: git_stderr.write(create_result.stderr)
+                        error_msg = "Bundle creation failed"
+                        git_stdout.write(f"error {remote_ref} {self.escape_for_stdout(error_msg)}\n")
+                        git_stdout.flush()
+                        continue
 
-                request_data = { self.IDX_REPOSITORY: self.repo_path, "local_ref": local_ref, "remote_ref": remote_ref,
-                                 "force": force, "bundle": bundle_data }
-                
+                if not bundle_empty:
+                    with open(bundle_path, "rb") as f: bundle_data = f.read()
+
+                    request_data = { self.IDX_REPOSITORY: self.repo_path, "local_ref": local_ref, "remote_ref": remote_ref,
+                                     "force": force, "bundle": bundle_data }
+                    
+                    response, metadata = self.send_request(self.PATH_PUSH, request_data)
+
+                    if not response or not isinstance(response, bytes):
+                        git_stdout.write(f"error {remote_ref} {self.escape_for_stdout('No response from server')}\n")
+                        git_stdout.flush()
+                        continue
+
+                    status_byte = response[0]
+                    if status_byte != 0:
+                        error_msg = response[1:].decode('utf-8', errors='ignore')
+                        git_stdout.write(f"error {remote_ref} {self.escape_for_stdout(error_msg)}\n")
+                        git_stdout.flush()
+                        continue
+
+            # When all reachable objects already exist on the remote, send a
+            # direct ref update operation instead of a bundle.
+            if bundle_empty:
+                openration   = {"action": "update_ref", "ref": remote_ref, "sha": local_sha, "force": force}
+                request_data = { self.IDX_REPOSITORY: self.repo_path,
+                                 "operations": [operation] }
+
                 response, metadata = self.send_request(self.PATH_PUSH, request_data)
 
                 if not response or not isinstance(response, bytes):
