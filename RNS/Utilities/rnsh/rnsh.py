@@ -162,9 +162,9 @@ def main():
     try: return_code = asyncio.run(_rnsh_cli_main())
     except SystemExit: pass
     except KeyboardInterrupt: pass
-    except Exception as ex:
-        print(f"Unhandled exception: {ex}")
-        exc = ex
+    except Exception as e:
+        print(f"{e}")
+        exc = e
     
     process.tty_unset_reader_callbacks(0)
     if verbose_set and exc: raise exc
