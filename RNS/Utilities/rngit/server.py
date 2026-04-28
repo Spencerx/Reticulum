@@ -569,35 +569,43 @@ class ReticulumGitNode():
             local_ref   = data.get("local_ref", "")
             remote_ref  = data.get("remote_ref", "")
             force       = data.get("force", False)
-            bundle_data = data.get("bundle", b"")
+            bundle_data = data.get("bundle", None)
+            operations  = data.get("operations", None)
             
-            if not local_ref or not remote_ref: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Missing ref specification"
-            try:
-                RNS.log(f"Push {local_ref}:{remote_ref} to {group_name}/{repository_name}", RNS.LOG_DEBUG)
-                
-                with TemporaryDirectory() as tmpdir:
-                    bundle_path = os.path.join(tmpdir, "push.bundle")
+            if bundle_data:
+                if not local_ref or not remote_ref: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Missing ref specification"
+                try:
+                    RNS.log(f"Push {local_ref}:{remote_ref} to {group_name}/{repository_name}", RNS.LOG_DEBUG)
                     
-                    if isinstance(bundle_data, str): bundle_data = bundle_data.encode("utf-8")
-                    with open(bundle_path, "wb") as f: f.write(bundle_data)
-                    
-                    execv = ["git", "bundle", "verify", bundle_path]
-                    result = subprocess.run(execv, cwd=repository_path, capture_output=True, check=False)
-                    
-                    if result.returncode != 0: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + result.stderr
-                    
-                    execv = ["git", "fetch", bundle_path, f"{local_ref}:{remote_ref}"]
-                    if force: execv.append("--force")
-                    
-                    result = subprocess.run(execv, cwd=repository_path, capture_output=True, check=False)
-                    
-                    if result.returncode != 0: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + result.stderr
-                    
-                    return b"\x00"
+                    with TemporaryDirectory() as tmpdir:
+                        bundle_path = os.path.join(tmpdir, "push.bundle")
 
-            except Exception as e:
-                RNS.log(f"Error while handling push request for {group_name}/{repository_name}: {e}", RNS.LOG_ERROR)
-                return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+                        if isinstance(bundle_data, str): bundle_data = bundle_data.encode("utf-8")
+                        with open(bundle_path, "wb") as f: f.write(bundle_data)
+
+                        execv = ["git", "bundle", "verify", bundle_path]
+                        result = subprocess.run(execv, cwd=repository_path, capture_output=True, check=False)
+
+                        if result.returncode != 0: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + result.stderr
+
+                        execv = ["git", "fetch", bundle_path, f"{local_ref}:{remote_ref}"]
+                        if force: execv.append("--force")
+
+                        result = subprocess.run(execv, cwd=repository_path, capture_output=True, check=False)
+
+                        if result.returncode != 0: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + result.stderr
+
+                        return b"\x00"
+
+                except Exception as e:
+                    RNS.log(f"Error while handling push request for {group_name}/{repository_name}: {e}", RNS.LOG_ERROR)
+                    return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+            elif operations:
+                # TODO: Implement
+                pass
+
+            else: self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request data"
 
     def handle_delete(self, path, data, request_id, remote_identity, requested_at):
         RNS.log(f"Delete request from remote {remote_identity}", RNS.LOG_DEBUG)
