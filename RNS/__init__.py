@@ -197,6 +197,11 @@ def prettyhexrep(data):
     hexrep = "<"+delimiter.join("{:02x}".format(c) for c in data)+">"
     return hexrep
 
+def prettyb256rep(data):
+    delimiter = ""
+    b256rep = "<"+delimiter.join(b256_rep(c) for c in data)+">"
+    return b256rep
+
 def prettyspeed(num, suffix="b"):
     return prettysize(num/8, suffix=suffix)+"ps"
 
@@ -541,3 +546,25 @@ class Profiler:
                 print_results_recursive(tag, results)
 
 profile = Profiler.get_profiler
+
+b256 = [
+# 0   1   2   3   4   5   6   7   8   9   A   B   C   D   F   F
+ "a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p",  # 0x0 Latin & numerals
+ "q","r","s","t","u","v","x","y","z","æ","ø","0","1","2","3","4",  # 0x1 Latin & numerals
+ "A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P",  # 0x2 Latin & numerals
+ "Q","R","S","T","U","W","X","Y","Z","Æ","Ø","5","6","7","8","9",  # 0x3 Latin & numerals
+ "α","β","γ","δ","ε","ζ","η","θ","ι","κ","λ","μ","ν","ξ","π","ρ",  # 0x4 Greek
+ "σ","τ","φ","χ","ψ","ω","Γ","Δ","Θ","Λ","Ξ","Π","Σ","Φ","Ψ","Ω",  # 0x5 Greek
+ "Б","Д","Ж","З","И","Л","П","Ц","Ч","Ш","Щ","Ъ","Ы","Э","Ю","Я",  # 0x6 Cyrillic
+ "б","д","ж","з","и","л","п","ц","ч","ш","щ","ъ","ы","э","ю","я",  # 0x7 Cyrillic
+ "Ա","Բ","Գ","Դ","Ե","Զ","Է","Ը","Թ","Ժ","Ի","Խ","Ծ","Կ","Հ","Ձ",  # 0x8 Armenian Capitals
+ "Ղ","Ճ","Մ","Յ","Ն","Շ","Ո","Չ","Պ","Ջ","Վ","Ր","Ց","Ւ","Ք","Ֆ",  # 0x9 Armenian Captials
+ "ᚠ","ᚢ","ᚦ","ᚱ","ᚹ","ᚺ","ᚾ","ᛈ","ᛇ","ᛉ","ᛊ","ᛏ","ᛒ","ᛖ","ᛗ","ᛟ",   # 0xA Elder Futhark
+ "ｲ","ｳ","ｵ","ｶ","ｷ","ｹ","ｻ","ｼ","ｽ","ｾ","ﾀ","ﾁ","ﾃ","ﾄ","ﾅ","ﾇ",     # 0xB Katakana
+ "ﾈ","ﾋ","ﾌ","ﾍ","ﾎ","ﾏ","ﾐ","ﾑ","ﾒ","ﾓ","ﾔ","ﾗ","ﾘ","ﾙ","ﾚ","ﾜ",     # 0xC Katakana
+ "𐑐","𐑑","𐑒","𐑔","𐑕","𐑗","𐑙","𐑳","𐑶","𐑸","𐑹","𐑺","𐑻","𐑽","𐑾","𐑿",    # 0xD Shavian
+ "᱑","᱕","᱘","᱙","ᱚ","ᱝ","ᱟ","ᱣ","ᱦ","ᱨ","ᱬ","ᱭ","ᱰ","ᱳ","ᱶ","ᱷ", # 0xE Ol Chiki
+ "𐌳","𐌸","𐌾","𐐀","𐐁","𐐂","𐐆","𐐇","𐐈","𐐉","𐐊","𐐋","𐐌","𐐍","𐐎","𐐏", # 0xF Gothic & Deseret
+]
+
+def b256_rep(input_byte): return b256[int(input_byte)]
