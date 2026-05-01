@@ -40,6 +40,7 @@ from tempfile import TemporaryDirectory
 
 from RNS._version import __version__
 from RNS.Utilities.rngit import APP_NAME
+from RNS.Utilities.rngit.pages import NomadNetworkNode
 from RNS.vendor.configobj import ConfigObj
 
 def program_setup(configdir, rnsconfigdir=None, verbosity=0, quietness=0, service=False, interactive=False, print_identity=False):
@@ -133,6 +134,7 @@ class ReticulumGitNode():
         self.global_allow        = RNS.Destination.ALLOW_ALL
         self.groups              = {}
         self.active_links        = {}
+        self.page_servers        = {}
         self.last_announce       = 0
         self.announce_interval   = 0
         self.link_clean_interval = 5
@@ -144,6 +146,7 @@ class ReticulumGitNode():
         self.verbosity           = verbosity or 0
         self.ready               = False
         self._should_run         = False
+        self._serve_nomadnet     = False
 
         if not self.__ensure_git(): RNS.log("The \"git\" command is not available. Aborting server startup.", RNS.LOG_ERROR)
         else:
@@ -185,15 +188,20 @@ class ReticulumGitNode():
                 else: client_identity = RNS.Identity.from_file(client_identity_path)
 
                 destination_hash = RNS.Destination.hash_from_name_and_identity(f"{APP_NAME}.repositories", self.identity)
-                print(f"Git Peer Identity        : {RNS.prettyhexrep(client_identity.hash)}")
-                print(f"Repository Node Identity : {RNS.prettyhexrep(self.identity.hash)}")
-                print(f"Repositories Destination : {RNS.prettyhexrep(destination_hash)}")
+                nomadnet_hash    = RNS.Destination.hash_from_name_and_identity(f"nomadnetwork.node", self.identity)
+                print(f"Git Peer Identity         : {RNS.prettyhexrep(client_identity.hash)}")
+                print(f"Repository Node Identity  : {RNS.prettyhexrep(self.identity.hash)}")
+                print(f"Repositories Destination  : {RNS.prettyhexrep(destination_hash)}")
+                if self._serve_nomadnet: print(f"Nomad Network Destination : {RNS.prettyhexrep(nomadnet_hash)}")
                 exit(0)
 
             self.destination = RNS.Destination(self.identity, RNS.Destination.IN, RNS.Destination.SINGLE, APP_NAME, "repositories")
             self.destination.set_link_established_callback(self.remote_connected)
             self.register_request_handlers()
             RNS.log(f"Reticulum Git Node listening on {RNS.prettyhexrep(self.destination.hash)}", RNS.LOG_NOTICE)
+
+            if self._serve_nomadnet: self.page_servers["nomadnet"] = NomadNetworkNode(self)
+
             self.ready = True
 
     def __create_default_config(self):
@@ -227,6 +235,10 @@ class ReticulumGitNode():
         if "logging" in self.config:
             section = self.config["logging"]
             if "loglevel" in section: RNS.loglevel = max(RNS.LOG_NONE, min(RNS.LOG_EXTREME, section.as_int("loglevel")+self.verbosity))
+
+        if "pages" in self.config:
+            section = self.config["pages"]
+            if "serve_nomadnet" in section and section.as_bool("serve_nomadnet"): self._serve_nomadnet = True
 
         if "repositories" in self.config:
             section = self.config["repositories"]
@@ -759,6 +771,12 @@ internal = rw:9710b86ba12c42d1d8f30f74fe509286
 # all repositories within this group. The same syntax and
 # functionality applies here.
 
+[pages]
+# You can run a nomadnet-compatible page node to serve
+# repository information if required. Access permissions
+# will follow those configured per group and repository.
+
+# serve_nomadnet = no
 
 [logging]
 # Valid log levels are 0 through 7:
