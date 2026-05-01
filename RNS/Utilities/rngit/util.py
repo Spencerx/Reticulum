@@ -1,0 +1,415 @@
+# Reticulum License
+#
+# Copyright (c) 2016-2026 Mark Qvist
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# - The Software shall not be used in any kind of system which includes amongst
+#   its functions the ability to purposefully do harm to human beings.
+#
+# - The Software shall not be used, directly or indirectly, in the creation of
+#   an artificial intelligence, machine learning or language model training
+#   dataset, including but not limited to any use that contributes to the
+#   training or development of such a model or algorithm.
+#
+# - The above copyright notice and this permission notice shall be included in
+#   all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+import re
+from typing import List
+
+class MarkdownToMicron:    
+    BOLD = "`!"
+    BOLD_END = "`!"
+    ITALIC = "`*"
+    ITALIC_END = "`*"
+    UNDERLINE = "`_"
+    UNDERLINE_END = "`_"
+    
+    CODE_BG = "`B444"
+    CODE_FG = "`Fddd"
+    CODE_RESET = "`f`b"
+    
+    LITERAL_START = "`="
+    LITERAL_END = "`="
+    
+    BULLET = "•"
+    
+    # Regex patterns for markdown elements
+    HEADER_RE = re.compile(r'^(#{1,6})\s+(.+)$')
+    CODE_FENCE_RE = re.compile(r'^(\s*)```(.*)$')
+    HORIZONTAL_RULE_RE = re.compile(r'^(\s*)(---+|===+|\*\*\*+|___+)\s*$')
+    UNORDERED_LIST_RE = re.compile(r'^(\s*)([-*+])\s+(.+)$')
+    
+    # Table patterns
+    TABLE_ROW_RE = re.compile(r'^\s*\|?(.+?)\|?\s*$')
+    TABLE_SEP_RE = re.compile(r'^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$')
+    
+    # Inline patterns (processed in order of specificity)
+    LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+    INLINE_CODE_RE = re.compile(r'`([^`]+)`')
+    BOLD_RE = re.compile(r'\*\*(.+?)\*\*|__(.+?)__')
+    ITALIC_RE = re.compile(r'\*(.+?)\*|_(.+?)_')
+
+    TABLE_H = "─"
+    TABLE_V = "│"
+    TABLE_TL = "┌"
+    TABLE_TR = "┐"
+    TABLE_BL = "└"
+    TABLE_BR = "┘"
+    TABLE_ML = "├"
+    TABLE_MR = "┤"
+    TABLE_TM = "┬"
+    TABLE_BM = "┴"
+    TABLE_MM = "┼"
+    
+    TABLE_MIN_COL_WIDTH = 3
+
+    def __init__(self, max_width=100):
+        self.max_width = max_width
+    
+    def format_block(self, text: str) -> str:
+        lines = text.split('\n')
+        result_lines = []
+        in_code_block = False
+        in_table = False
+        table_buffer = []
+        
+        def flush_table_buffer():
+            nonlocal result_lines, table_buffer, in_table
+            if not table_buffer:
+                in_table = False
+                return
+            
+            if len(table_buffer) >= 2 and self._is_table_separator(table_buffer[1]):
+                formatted_lines = self.format_table(table_buffer)
+                result_lines.extend(formatted_lines)
+            
+            else:
+                for line in table_buffer: result_lines.append(self.format_line(line))
+            
+            table_buffer = []
+            in_table = False
+        
+        for line in lines:
+            is_fence, _ = self._detect_code_fence(line)
+            
+            if is_fence:
+                # Flush any pending table before code fence
+                flush_table_buffer()
+                
+                if not in_code_block:
+                    in_code_block = True
+                    result_lines.append(self.LITERAL_START)
+                
+                else:
+                    result_lines.append(self.LITERAL_END)
+                    in_code_block = False
+            
+            else:
+                if in_code_block: result_lines.append(self._escape_literals(line))
+                else:
+                    if self._is_table_row(line):
+                        if not in_table:
+                            in_table = True
+                            table_buffer = [line]
+                        
+                        else: table_buffer.append(line)
+                    
+                    else:
+                        # Line breaks table - flush buffer
+                        if in_table: flush_table_buffer()
+                        formatted = self.format_line(line)
+                        result_lines.append(formatted)
+        
+        # Handle unclosed structures
+        if in_table: flush_table_buffer()
+        if in_code_block: result_lines.append(self.LITERAL_END)
+        
+        return '\n'.join(result_lines)
+    
+    def format_line(self, line: str, mode: str = "normal") -> str:
+        if mode == "codeblock": return self._escape_literals(line)
+        
+        if self.HORIZONTAL_RULE_RE.match(line): return self._format_horizontal_rule()
+        
+        header_match = self.HEADER_RE.match(line)
+        if header_match: return self._format_header(header_match)
+        
+        list_match = self.UNORDERED_LIST_RE.match(line)
+        if list_match: return self._format_list_item(list_match)
+        
+        line = self._format_inline(line)
+        
+        return line
+    
+    def _format_inline(self, text: str) -> str:
+        code_blocks = []
+        def extract_code(match):
+            code_blocks.append(match.group(1))
+            return f"\x00{len(code_blocks)-1}\x00"
+        
+        text = self.INLINE_CODE_RE.sub(extract_code, text)
+        text = self.BOLD_RE.sub(self._bold_sub, text)
+        text = self.ITALIC_RE.sub(self._italic_sub, text)
+        text = self.LINK_RE.sub(self._link_sub, text)
+        
+        def restore_code(match):
+            idx = int(match.group(1))
+            content = code_blocks[idx]
+            # Escape any backticks in the content
+            content = content.replace('`', '\\`')
+            return f"{self.CODE_BG}{self.CODE_FG}{content}{self.CODE_RESET}"
+        
+        text = re.sub(r'\x00(\d+)\x00', restore_code, text)
+        return text
+    
+    def _bold_sub(self, match: re.Match) -> str:
+        content = match.group(1) or match.group(2)
+        return f"{self.BOLD}{content}{self.BOLD_END}"
+    
+    def _italic_sub(self, match: re.Match) -> str:
+        content = match.group(1) or match.group(2)
+        return f"{self.ITALIC}{content}{self.ITALIC_END}"
+    
+    def _link_sub(self, match: re.Match) -> str:
+        text = match.group(1)
+        url = match.group(2)
+        # TODO: Evaluate best way to handle both normal and nomadnet URLs
+        text = text.replace('`', '')
+        # url = url.replace('`', '\\`')
+        return f"`[{text}`{url}]"
+    
+    def _format_header(self, match: re.Match) -> str:
+        hashes = match.group(1)
+        content = match.group(2)
+        level = len(hashes)
+        prefix = ">" * min(level, 6)
+        return f"{prefix}{content}"
+    
+    def _format_list_item(self, match: re.Match) -> str:
+        indent = match.group(1)
+        content = match.group(3)
+        content = self._format_inline(content)
+        return f"{indent} {self.BULLET} {content}"
+    
+    def _format_horizontal_rule(self) -> str:
+        return "-"
+    
+    def _detect_code_fence(self, line: str) -> tuple[bool, str]:
+        match = self.CODE_FENCE_RE.match(line)
+        if match: return True, match.group(1)
+        return False, ""
+    
+    def _is_table_row(self, line: str) -> bool:
+        if '|' not in line: return False
+        match = self.TABLE_ROW_RE.match(line)
+        if match is None: return False
+        content = match.group(1)
+        return '|' in content or line.strip().startswith('|')
+    
+    def _is_table_separator(self, line: str) -> bool:
+        if '|' not in line: return False
+        match = self.TABLE_SEP_RE.match(line)
+        return match is not None
+    
+    def _escape_literals(self, text: str) -> str:
+        return text.replace('`', '\\`')
+
+    def format_table(self, rows: List[str]) -> List[str]:
+        if len(rows) < 2: return rows
+        
+        # Parse header and separator
+        header_cells = self._parse_table_row(rows[0])
+        alignments = self._parse_table_alignments(rows[1])
+        
+        # Ensure alignment count matches header cells
+        while len(alignments) < len(header_cells): alignments.append('left')
+        alignments = alignments[:len(header_cells)]
+        
+        # Parse data rows
+        data_rows = []
+        for i in range(2, len(rows)):
+            cells = self._parse_table_row(rows[i])
+            while len(cells) < len(header_cells): cells.append("")
+            cells = cells[:len(header_cells)]
+            data_rows.append(cells)
+        
+        # Calculate column widths based on content
+        num_cols = len(header_cells)
+        col_widths = [0] * num_cols
+        
+        all_rows = [header_cells] + data_rows
+        for row in all_rows:
+            for i, cell in enumerate(row):
+                formatted = self._format_inline(cell)
+                # Calculate visible width (excluding Micron tags)
+                width = self._visible_width(formatted)
+                col_widths[i] = max(col_widths[i], width)
+        
+        # Apply minimum width and calculate total
+        col_widths = [max(w, self.TABLE_MIN_COL_WIDTH) for w in col_widths]
+        
+        # Check max_width constraint
+        # Total = sum of columns + 3 chars per column (space + 2 borders) + 1 for final border
+        total_width = sum(col_widths) + (num_cols * 3) + 1
+        
+        if total_width > self.max_width:
+            # Reduce widest columns proportionally
+            excess = total_width - self.max_width
+            indexed_widths = [(i, w) for i, w in enumerate(col_widths)]
+            indexed_widths.sort(key=lambda x: -x[1])
+            
+            for i, w in indexed_widths:
+                if excess <= 0: break
+                reduction = min(excess, w - self.TABLE_MIN_COL_WIDTH)
+                col_widths[i] -= reduction
+                excess -= reduction
+        
+        # Build formatted table
+        result = []
+        
+        # Center alignment start
+        result.append("`c")
+        
+        # Top border
+        border = self.TABLE_TL
+        for i, w in enumerate(col_widths):
+            border += self.TABLE_H * (w + 2)
+            if i < len(col_widths) - 1: border += self.TABLE_TM
+            else:                       border += self.TABLE_TR
+        
+        result.append(self._escape_literals(border))
+        
+        # Header row
+        header_line = self.TABLE_V
+        for i, cell in enumerate(header_cells):
+            formatted = self._format_inline(cell)
+            padded = self._pad_cell(formatted, col_widths[i], 'left')
+            header_line += f" {padded} {self.TABLE_V}"
+        result.append(self._escape_literals(header_line))
+        
+        # Separator row
+        sep_line = self.TABLE_ML
+        for i, w in enumerate(col_widths):
+            cell_width = w + 2
+            if   alignments[i] == 'center': sep_line += f":{self.TABLE_H * (cell_width - 2)}:"
+            elif alignments[i] == 'right':  sep_line += f"{self.TABLE_H * (cell_width - 1)}:"
+            else:                           sep_line += self.TABLE_H * cell_width
+            
+            if i < len(col_widths) - 1: sep_line += self.TABLE_MM
+            else:                       sep_line += self.TABLE_MR
+
+        result.append(self._escape_literals(sep_line))
+        
+        # Data rows
+        for row in data_rows:
+            row_line = self.TABLE_V
+            for i, cell in enumerate(row):
+                formatted = self._format_inline(cell)
+                padded = self._pad_cell(formatted, col_widths[i], alignments[i])
+                row_line += f" {padded} {self.TABLE_V}"
+            
+            result.append(row_line)
+        
+        # Bottom border
+        border = self.TABLE_BL
+        for i, w in enumerate(col_widths):
+            border += self.TABLE_H * (w + 2)
+            if i < len(col_widths) - 1: border += self.TABLE_BM
+            else:                       border += self.TABLE_BR
+        
+        result.append(self._escape_literals(border))
+        
+        # End center alignment
+        result.append("`a")
+        
+        return result
+    
+    def _parse_table_row(self, line: str) -> List[str]:
+        line = line.strip()
+        if line.startswith('|'): line = line[1:]
+        if line.endswith('|'):   line = line[:-1]
+        
+        cells = []
+        current = ""
+        escaped = False
+        for char in line:
+            if escaped:
+                current += char
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '|':
+                cells.append(current.strip())
+                current = ""
+            else:
+                current += char
+        
+        cells.append(current.strip())
+        return cells
+    
+    def _parse_table_alignments(self, line: str) -> List[str]:
+        cells = self._parse_table_row(line)
+        alignments = []
+        for cell in cells:
+            cell = cell.strip()
+            if cell.startswith(':') and cell.endswith(':'): alignments.append('center')
+            elif cell.endswith(':'):                        alignments.append('right')
+            else:                                           alignments.append('left')
+        
+        return alignments
+    
+    def _visible_width(self, text: str) -> int:
+        # Remove Micron tags
+        text = re.sub(r'`[FB][0-9a-fA-F]{3}', '', text)
+        text = re.sub(r'`[!*_]', '', text)
+        text = re.sub(r'`f`b', '', text)
+        text = re.sub(r'`f', '', text)
+        text = re.sub(r'`b', '', text)
+        return len(text)
+    
+    def _pad_cell(self, text: str, width: int, align: str) -> str:
+        text = self._truncate_cell(text, width)
+        text_width = self._visible_width(text)
+        padding = width - text_width
+        
+        if align == 'right':
+            return " " * padding + text
+        elif align == 'center':
+            left = padding // 2
+            right = padding - left
+            return " " * left + text + " " * right
+        else:
+            return text + " " * padding
+    
+    def _truncate_cell(self, text: str, width: int) -> str:
+        if self._visible_width(text) <= width: return text
+        
+        stripped = text
+        stripped = re.sub(r'`[FB][0-9a-fA-F]{3}', '', stripped)
+        stripped = re.sub(r'`[!*_]', '', stripped)
+        stripped = re.sub(r'`f`b', '', stripped)
+        
+        if len(stripped) <= width - 1: return text
+        
+        truncated = stripped[:width - 1] + "…"
+        return truncated
+
+
+def convert_markdown_to_micron(text: str) -> str:
+    converter = MarkdownToMicron()
+    return converter.format_block(text)

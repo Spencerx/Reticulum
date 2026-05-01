@@ -323,7 +323,8 @@ class ReticulumGitNode():
             elif self.TGT_ALL  in repository_permissions: return True
             elif remote_hash   in repository_permissions: return True
             else:
-                if   self.TGT_NONE in group_permissions: return False
+                if len(repository_permissions) > 0:      return False
+                elif self.TGT_NONE in group_permissions: return False
                 elif self.TGT_ALL  in group_permissions: return True
                 elif remote_hash   in group_permissions: return True
                 else:                                    return False
