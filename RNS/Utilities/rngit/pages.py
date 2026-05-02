@@ -36,6 +36,7 @@ import RNS
 from datetime import datetime
 from RNS.Utilities.rngit import APP_NAME
 from RNS.Utilities.rngit.util import MarkdownToMicron
+from RNS.Utilities.rngit.highlight import SyntaxHighlighter
 from RNS.vendor.configobj import ConfigObj
 from RNS._version import __version__
 
@@ -82,22 +83,24 @@ class NomadNetworkNode():
     def __init__(self, owner=None):
         if not owner: raise TypeError(f"Invalid owner {owner} for {self}")
 
-        self._ready            = False
-        self._should_run       = False
-        self.owner             = owner
-        self.identity          = owner.identity
-        self.node_name         = owner.node_name
-        self.announce_interval = owner.announce_interval
-        self.last_announce     = 0
-        self.null_ident        = RNS.Identity.from_bytes(bytes(64))
-        self.mdc               = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH)
-        self.templates         = {}
-
+        self._ready             = False
+        self._should_run        = False
+        self.owner              = owner
+        self.identity           = owner.identity
+        self.node_name          = owner.node_name
+        self.announce_interval  = owner.announce_interval
+        self.last_announce      = 0
+        self.null_ident         = RNS.Identity.from_bytes(bytes(64))
+        
+        self.templates          = {}
         self.templates["base"]  = DEFAULT_BASE_TEMPLATE
         self.templates["front"] = DEFAULT_FRONT_TEMPLATE
         self.templates["group"] = DEFAULT_GROUP_TEMPLATE
         self.use_nerdfonts      = self.USE_NERDFONTS
-        
+        self.highlight_syntax   = True
+        self.highlighter        = SyntaxHighlighter()
+        self.mdc                = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH, syntax_highlighter=self.highlighter)
+
         self.destination = RNS.Destination(self.identity, RNS.Destination.IN, RNS.Destination.SINGLE, self.APP_NAME, "node")
         self.destination.set_link_established_callback(self.remote_connected)
         self.destination.set_default_app_data(self.get_announce_app_data)
@@ -322,10 +325,10 @@ class NomadNetworkNode():
         tag_count = len(refs["tags"]) if refs else 0
         
         sep = self.icon("sep")
-        content_parts.append(f"{self.m_link(self.icon("folder")+" Files", self.PATH_TREE, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
-        content_parts.append(f"{self.m_link(self.icon("commits")+f" Commits ({commits_count})", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
-        content_parts.append(f"{self.m_link(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
-        content_parts.append(f"{self.m_link(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")}")
+        content_parts.append(f"{self.m_link_r(self.icon("folder")+" Files", self.PATH_TREE, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
+        content_parts.append(f"{self.m_link_r(self.icon("commits")+f" Commits ({commits_count})", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
+        content_parts.append(f"{self.m_link_r(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
+        content_parts.append(f"{self.m_link_r(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")}")
         content_parts.append("\n\n<")
 
         # Readme content
@@ -568,8 +571,14 @@ class NomadNetworkNode():
             else:
                 # Display file content
                 content = self.get_blob_content(repo_path, resolved_ref, file_path)
-                if content is not None: content_parts.append(f"`=\n{content}\n`=")
-                else:                   content_parts.append("Error reading file content.\n")
+                if content is not None:
+                    if self.highlight_syntax:
+                        highlighted = self.highlighter.highlight(content, file_path)
+                        content_parts.append(highlighted)
+                    else:
+                        content_parts.append(f"`=\n{content}\n`=")
+                else:
+                    content_parts.append("Error reading file content.\n")
 
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)

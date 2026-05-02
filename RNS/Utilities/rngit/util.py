@@ -29,7 +29,7 @@
 # SOFTWARE.
 
 import re
-from typing import List
+import RNS
 
 class MarkdownToMicron:    
     BOLD = "`!"
@@ -39,7 +39,8 @@ class MarkdownToMicron:
     UNDERLINE = "`_"
     UNDERLINE_END = "`_"
     
-    CODE_BG = "`B444"
+    CODE_BG = "`BT282828"
+    CODE_BG_INLINE = "`BT383838"
     CODE_FG = "`Fddd"
     CODE_RESET = "`f`b"
     
@@ -78,13 +79,31 @@ class MarkdownToMicron:
     
     TABLE_MIN_COL_WIDTH = 3
 
-    def __init__(self, max_width=100):
+    def __init__(self, max_width=100, syntax_highlighter=None):
         self.max_width = max_width
+        self.syntax_highlighter = syntax_highlighter
+        self.wcwidth = None
+        
+        try:
+            import wcwidth
+            self.wcwidth = wcwidth
+
+        except: RNS.log(f"The wcwidth module is unavailable, display width calculations for some glyphs will be incorrect", RNS.LOG_WARNING)
+
+    def display_width(self, text):
+        if not self.wcwidth: return len(text)
+        else:
+            # wcswidth returns -1 for non-printable strings,
+            # fallback to len in this case
+            w = self.wcwidth.wcswidth(text)
+            return w if w is not None and w >= 0 else len(text)
     
     def format_block(self, text: str) -> str:
         lines = text.split('\n')
         result_lines = []
         in_code_block = False
+        code_block_lang = None
+        code_buffer = []
         in_table = False
         table_buffer = []
         
@@ -104,25 +123,59 @@ class MarkdownToMicron:
             table_buffer = []
             in_table = False
         
+        def flush_code_block():
+            nonlocal result_lines, code_buffer, code_block_lang
+            if not code_buffer:
+                return
+            
+            code_content = '\n'.join(code_buffer)
+            
+            if self.syntax_highlighter and code_block_lang:
+                try:
+                    highlighted = self.syntax_highlighter.highlight(code_content, language=code_block_lang)
+                    result_lines.append(f"{self.CODE_BG}{self.CODE_FG}")
+                    result_lines.append(highlighted)
+                    result_lines.append(self.CODE_RESET)
+
+                except Exception:
+                    # Fallback to plain literal block on any error
+                    result_lines.append(f"{self.CODE_BG}{self.CODE_FG}")
+                    result_lines.append(self.LITERAL_START)
+                    result_lines.append(self._escape_literals(code_content))
+                    result_lines.append(self.LITERAL_END)
+                    result_lines.append(self.CODE_RESET)
+            else:
+                result_lines.append(f"{self.CODE_BG}{self.CODE_FG}")
+                result_lines.append(self.LITERAL_START)
+                result_lines.append(self._escape_literals(code_content))
+                result_lines.append(self.LITERAL_END)
+                result_lines.append(self.CODE_RESET)
+            
+            code_buffer = []
+        
         for line in lines:
-            is_fence, _ = self._detect_code_fence(line)
+            is_fence, lang_hint = self._detect_code_fence(line)
             
             if is_fence:
                 # Flush any pending table before code fence
                 flush_table_buffer()
                 
                 if not in_code_block:
+                    # Opening fence, start buffering
                     in_code_block = True
-                    result_lines.append(f"{self.CODE_BG}{self.CODE_FG}")
-                    result_lines.append(self.LITERAL_START)
+                    code_block_lang = lang_hint.strip() if lang_hint else None
+                    code_buffer = []
                 
                 else:
-                    result_lines.append(self.LITERAL_END)
-                    result_lines.append(self.CODE_RESET)
+                    # Closing fence, flush highlighted code
+                    flush_code_block()
                     in_code_block = False
+                    code_block_lang = None
             
             else:
-                if in_code_block: result_lines.append(self._escape_literals(line))
+                if in_code_block:
+                    # Buffer code lines for later highlighting
+                    code_buffer.append(line)
                 else:
                     if self._is_table_row(line):
                         if not in_table:
@@ -132,14 +185,16 @@ class MarkdownToMicron:
                         else: table_buffer.append(line)
                     
                     else:
-                        # Line breaks table - flush buffer
+                        # Line breaks table, flush buffer
                         if in_table: flush_table_buffer()
                         formatted = self.format_line(line)
                         result_lines.append(formatted)
         
         # Handle unclosed structures
         if in_table: flush_table_buffer()
-        if in_code_block: result_lines.append(self.LITERAL_END)
+        if in_code_block:
+            # Unclosed code block, flush what we have
+            flush_code_block()
         
         return '\n'.join(result_lines)
     
@@ -172,12 +227,21 @@ class MarkdownToMicron:
         def restore_code(match):
             idx = int(match.group(1))
             content = code_blocks[idx]
-            # Escape any backticks in the content
+            
+            # Disabled for now
+            # highlighted = self._highlight_inline_code(content)
+            # if highlighted: return highlighted
+            
+            # Plain inline code formatting
             content = content.replace('`', '\\`')
-            return f"{self.CODE_BG}{self.CODE_FG}{content}{self.CODE_RESET}"
+            return f"{self.CODE_BG_INLINE}{self.CODE_FG}{content}{self.CODE_RESET}"
         
         text = re.sub(r'\x00(\d+)\x00', restore_code, text)
         return text
+    
+    def _highlight_inline_code(self, content):
+        if not self.syntax_highlighter: return None
+        return self.syntax_highlighter.highlight(content, language=None)
     
     def _bold_sub(self, match: re.Match) -> str:
         content = match.group(1) or match.group(2)
@@ -213,7 +277,9 @@ class MarkdownToMicron:
     
     def _detect_code_fence(self, line: str) -> tuple[bool, str]:
         match = self.CODE_FENCE_RE.match(line)
-        if match: return True, match.group(1)
+        if match:
+            # match.group(2) contains everything after the backticks (language hint)
+            return True, match.group(2)
         return False, ""
     
     def _is_table_row(self, line: str) -> bool:
@@ -382,7 +448,7 @@ class MarkdownToMicron:
         text = re.sub(r'`f`b', '', text)
         text = re.sub(r'`f', '', text)
         text = re.sub(r'`b', '', text)
-        return len(text)
+        return self.display_width(text)
     
     def _pad_cell(self, text: str, width: int, align: str) -> str:
         text = self._truncate_cell(text, width)
