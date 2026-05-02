@@ -220,9 +220,9 @@ class MarkdownToMicron:
             return f"\x00{len(code_blocks)-1}\x00"
         
         text = self.INLINE_CODE_RE.sub(extract_code, text)
+        text = self.LINK_RE.sub(self._link_sub, text)
         text = self.BOLD_RE.sub(self._bold_sub, text)
         text = self.ITALIC_RE.sub(self._italic_sub, text)
-        text = self.LINK_RE.sub(self._link_sub, text)
         
         def restore_code(match):
             idx = int(match.group(1))
@@ -257,7 +257,8 @@ class MarkdownToMicron:
         # TODO: Evaluate best way to handle both normal and nomadnet URLs
         text = text.replace('`', '')
         # url = url.replace('`', '\\`')
-        return f"`!`[{text}`{url}]`!"
+        mu_link = f"`!`[{text}`{url}]`!"
+        return mu_link
     
     def _format_header(self, match):
         hashes = match.group(1)
