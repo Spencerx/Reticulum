@@ -60,7 +60,7 @@ class NomadNetworkNode():
     PATH_COMMIT           = "/page/commit.mu"
     PATH_REFS             = "/page/refs.mu"
 
-    BLOB_SIZE_LIMIT       = 1024 * 1024
+    BLOB_SIZE_LIMIT       = 256 * 1024
     TREE_ENTRIES_PER_PAGE = 100
     COMMITS_PER_PAGE      = 20
     SHOW_DIFF_BY_DEFAULT  = True
@@ -143,12 +143,14 @@ class NomadNetworkNode():
     def m_escape(self, text): return text.replace("`", "\\`")
 
     def m_link(self, _label, _path, **fields):
+        def sanitize_v(value): return urllib.parse.quote_plus(str(value).encode("utf-8"))
+        def sanitize_label(value): return value.replace("[", "").replace("]", "").replace("`", "")
         field_str = ""
         if fields:
             field_parts = []
-            for k, v in fields.items(): field_parts.append(f"{k}={v}")
+            for k, v in fields.items(): field_parts.append(f"{k}={sanitize_v(v)}")
             field_str = "`" + "|".join(field_parts)
-        return f"`[{_label}`:{_path}{field_str}]"
+        return f"`[{sanitize_label(_label)}`:{_path}{field_str}]"
 
     def m_align(self, text, align="left"):
         align_tag = {"center": "c", "left": "l", "right": "r"}.get(align, "a")
@@ -200,7 +202,7 @@ class NomadNetworkNode():
 
         content_parts = []
         
-        breadcrumb = f"{self.m_link('Groups', self.PATH_INDEX)} / {group_name}"
+        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {group_name}"
         content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")        
         content_parts.append(self.m_heading(group_name, 1))
         content_parts.append("\n")
@@ -240,7 +242,7 @@ class NomadNetworkNode():
         content_parts = []
         
         # Breadcrumb navigation
-        breadcrumb = f"{self.m_link('Groups', self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {repo_name}"
+        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {repo_name}"
         content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
         
         content_parts.append(self.m_heading(repo_name, 1))
@@ -312,6 +314,7 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "")    if data else ""
         ref = data.get("var_ref", "HEAD")    if data else "HEAD"
         tree_path = data.get("var_path", "") if data else ""
+        tree_path = urllib.parse.unquote_plus(tree_path)
         page_num = 0
         
         try:
@@ -337,7 +340,7 @@ class NomadNetworkNode():
         content_parts = []
 
         # Breadcrumb navigation
-        breadcrumb_parts = [ self.m_link("Groups", self.PATH_INDEX),
+        breadcrumb_parts = [ self.m_link("Node", self.PATH_INDEX),
                              self.m_link(group_name, self.PATH_GROUP, g=group_name),
                              self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name) ]
 
@@ -350,7 +353,7 @@ class NomadNetworkNode():
                 if i == len(path_components) - 1: breadcrumb_parts.append(component) # Last component not a link
                 else: breadcrumb_parts.append(self.m_link(component, self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=current_path))
         
-        else: breadcrumb_parts.append("root")
+        else: breadcrumb_parts.append("") # Could be "root" or something, but a bit confusing
 
         breadcrumb = " / ".join(breadcrumb_parts)
         content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
@@ -435,7 +438,7 @@ class NomadNetworkNode():
 
                 content_parts.append("  " + " | ".join(nav_links) + "\n")
 
-        content_parts.append("\n")
+        if content_parts[-1] == "\n": content_parts[-1] = ""
 
         page_content = "".join(content_parts)
         return self.render_template(page_content, st)
@@ -448,6 +451,7 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "")    if data else ""
         ref = data.get("var_ref", "HEAD")    if data else "HEAD"
         file_path = data.get("var_path", "") if data else ""
+        file_path = urllib.parse.unquote_plus(file_path)
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
@@ -470,7 +474,7 @@ class NomadNetworkNode():
         content_parts = []
 
         # Breadcrumb navigation
-        breadcrumb_parts = [ self.m_link("Groups", self.PATH_INDEX),
+        breadcrumb_parts = [ self.m_link("Node", self.PATH_INDEX),
                              self.m_link(group_name, self.PATH_GROUP, g=group_name),
                              self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name) ]
 
@@ -529,15 +533,9 @@ class NomadNetworkNode():
                 if content is not None:
                     content_parts.append(self.m_heading("Content", 2))
                     content_parts.append("\n")
-                    content_parts.append(self.m_divider())
-                    content_parts.append("\n")
                     content_parts.append(f"`=\n{content}\n`=")
-                    content_parts.append("\n")
-                    content_parts.append(self.m_divider())
                 else:
                     content_parts.append("Error reading file content.\n")
-
-        content_parts.append("\n")
 
         page_content = "".join(content_parts)
         return self.render_template(page_content, st)
@@ -550,6 +548,7 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "")    if data else ""
         ref = data.get("var_ref", "HEAD")    if data else "HEAD"
         file_path = data.get("var_path", "") if data else ""
+        file_path = urllib.parse.unquote_plus(file_path)
         page_num = 0
         
         try:
@@ -574,7 +573,7 @@ class NomadNetworkNode():
         content_parts = []
 
         # Breadcrumb navigation
-        breadcrumb_parts = [ self.m_link("Groups", self.PATH_INDEX),
+        breadcrumb_parts = [ self.m_link("Node", self.PATH_INDEX),
                              self.m_link(group_name, self.PATH_GROUP, g=group_name),
                              self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name),
                              "commits" ]
@@ -606,8 +605,8 @@ class NomadNetworkNode():
 
                 hash_link = self.m_link(short_hash, self.PATH_COMMIT, g=group_name, r=repo_name, h=commit["hash"])
 
-                content_parts.append(f"  `F66d{hash_link}`f {self.m_escape(subject)}\n")
-                content_parts.append(f"     {self.m_escape(author)} — {date}\n\n")
+                content_parts.append(f"`F66d{hash_link}`f {self.m_escape(author)} - {date}\n")
+                content_parts.append(f"{self.m_escape(subject)}\n\n")
 
             # Pagination controls
             has_more = len(commits) == self.COMMITS_PER_PAGE
@@ -621,8 +620,6 @@ class NomadNetworkNode():
                 nav_links.append(f"Page {page_num + 1}")
                 if has_more: nav_links.append(self.m_link("Older »", self.PATH_COMMITS, g=group_name, r=repo_name, ref=ref, path=file_path, page=page_num + 1))
                 content_parts.append("  " + " | ".join(nav_links) + "\n")
-
-        content_parts.append("\n")
 
         page_content = "".join(content_parts)
         return self.render_template(page_content, st)
@@ -670,7 +667,7 @@ class NomadNetworkNode():
         content_parts = []
 
         # Breadcrumb navigation
-        breadcrumb = f"{self.m_link('Groups', self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / {resolved_hash[:7]}"
+        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / {resolved_hash[:7]}"
         content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
 
         commit_info = self.get_commit_info(repo_path, resolved_hash)
@@ -749,18 +746,14 @@ class NomadNetworkNode():
         if self.SHOW_DIFF_BY_DEFAULT and commit_info.get("diff"):
             content_parts.append(self.m_heading("Diff", 2))
             content_parts.append("\n")
-            content_parts.append(self.m_divider())
-            content_parts.append("\n")
-            content_parts.append("`=\n"+commit_info["diff"]+"\n`=")
-            content_parts.append("\n")
-            content_parts.append(self.m_divider())
+            formatted_diff = self.format_diff(commit_info["diff"])
+            content_parts.append(f"{formatted_diff.lstrip()}")
 
         # Navigation to tree at this commit
         content_parts.append("\n")
         content_parts.append(self.m_heading("Browse", 2))
         content_parts.append("\n")
         content_parts.append(f"  {self.m_link('📁 Browse files at this commit', self.PATH_TREE, g=group_name, r=repo_name, ref=resolved_hash)}\n")
-        content_parts.append("\n")
 
         page_content = "".join(content_parts)
         return self.render_template(page_content, st)
@@ -783,7 +776,7 @@ class NomadNetworkNode():
         content_parts = []
 
         # Breadcrumb navigation
-        breadcrumb = f"{self.m_link('Groups', self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / refs"
+        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / refs"
         content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
 
         content_parts.append(self.m_heading("Refs", 1))
@@ -864,8 +857,6 @@ class NomadNetworkNode():
         filter_links.append(self.m_link("Branches only", self.PATH_REFS, g=group_name, r=repo_name, type="heads"))
         filter_links.append(self.m_link("Tags only", self.PATH_REFS, g=group_name, r=repo_name, type="tags"))
         content_parts.append("  " + " | ".join(filter_links) + "\n")
-
-        content_parts.append("\n")
 
         page_content = "".join(content_parts)
         return self.render_template(page_content, st)
@@ -1326,6 +1317,29 @@ class NomadNetworkNode():
         else:
             years = int(diff / 31536000)
             return f"{years} year{'s' if years != 1 else ''} ago"
+
+    def format_diff(self, diff_text: str) -> str:
+        lines = diff_text.split("\n")
+        formatted_lines = []
+        
+        for line in lines:
+            if line.startswith("+"):
+                if line.startswith("+++"): formatted_lines.append(self.m_escape(line))
+                else:                      formatted_lines.append(f"`F0a0{self.m_escape(line)}`f")
+            
+            elif line.startswith("-"):
+                if line.startswith("---"): formatted_lines.append(self.m_escape(f"\\{line}"))
+                else:                      formatted_lines.append(f"`F900{self.m_escape(line)}`f")
+            elif line.startswith("@@"):
+                formatted_lines.append(f"`F0aa{self.m_escape(line)}`f")
+
+            elif line.startswith("diff ") or line.startswith("index ") or line.startswith("new file") or line.startswith("deleted file"):
+                if line.startswith("diff --git a"): formatted_lines.append("")
+                formatted_lines.append(f"`F666{self.m_escape(line)}`f")
+
+            else: formatted_lines.append(self.m_escape(line))
+        
+        return "\n".join(formatted_lines)
 
     #######################
     # Connection Handlers #
