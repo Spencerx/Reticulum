@@ -30,6 +30,7 @@
 
 import os
 import time
+import threading
 import subprocess
 import urllib.parse
 import RNS
@@ -110,6 +111,8 @@ class NomadNetworkNode():
 
         self._should_run = True
         self._ready = True
+
+        threading.Thread(target=self.jobs, daemon=True).start()
 
     def icon(self, name):
         if self.use_nerdfonts:

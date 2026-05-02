@@ -98,7 +98,7 @@ class MarkdownToMicron:
             w = self.wcwidth.wcswidth(text)
             return w if w is not None and w >= 0 else len(text)
     
-    def format_block(self, text: str) -> str:
+    def format_block(self, text):
         lines = text.split('\n')
         result_lines = []
         in_code_block = False
@@ -198,7 +198,7 @@ class MarkdownToMicron:
         
         return '\n'.join(result_lines)
     
-    def format_line(self, line: str, mode: str = "normal") -> str:
+    def format_line(self, line, mode="normal"):
         if mode == "codeblock": return self._escape_literals(line)
         
         if self.HORIZONTAL_RULE_RE.match(line): return self._format_horizontal_rule()
@@ -213,7 +213,7 @@ class MarkdownToMicron:
         
         return line
     
-    def _format_inline(self, text: str) -> str:
+    def _format_inline(self, text):
         code_blocks = []
         def extract_code(match):
             code_blocks.append(match.group(1))
@@ -243,15 +243,15 @@ class MarkdownToMicron:
         if not self.syntax_highlighter: return None
         return self.syntax_highlighter.highlight(content, language=None)
     
-    def _bold_sub(self, match: re.Match) -> str:
+    def _bold_sub(self, match):
         content = match.group(1) or match.group(2)
         return f"{self.BOLD}{content}{self.BOLD_END}"
     
-    def _italic_sub(self, match: re.Match) -> str:
+    def _italic_sub(self, match):
         content = match.group(1) or match.group(2)
         return f"{self.ITALIC}{content}{self.ITALIC_END}"
     
-    def _link_sub(self, match: re.Match) -> str:
+    def _link_sub(self, match):
         text = match.group(1)
         url = match.group(2)
         # TODO: Evaluate best way to handle both normal and nomadnet URLs
@@ -259,45 +259,45 @@ class MarkdownToMicron:
         # url = url.replace('`', '\\`')
         return f"`[{text}`{url}]"
     
-    def _format_header(self, match: re.Match) -> str:
+    def _format_header(self, match):
         hashes = match.group(1)
         content = match.group(2)
         level = len(hashes)
         prefix = ">" * min(level, 6)
         return f"{prefix}{content}"
     
-    def _format_list_item(self, match: re.Match) -> str:
+    def _format_list_item(self, match):
         indent = match.group(1)
         content = match.group(3)
         content = self._format_inline(content)
         return f"{indent} {self.BULLET} {content}"
     
-    def _format_horizontal_rule(self) -> str:
+    def _format_horizontal_rule(self):
         return "-"
     
-    def _detect_code_fence(self, line: str) -> tuple[bool, str]:
+    def _detect_code_fence(self, line):
         match = self.CODE_FENCE_RE.match(line)
         if match:
             # match.group(2) contains everything after the backticks (language hint)
             return True, match.group(2)
         return False, ""
     
-    def _is_table_row(self, line: str) -> bool:
+    def _is_table_row(self, line):
         if '|' not in line: return False
         match = self.TABLE_ROW_RE.match(line)
         if match is None: return False
         content = match.group(1)
         return '|' in content or line.strip().startswith('|')
     
-    def _is_table_separator(self, line: str) -> bool:
+    def _is_table_separator(self, line):
         if '|' not in line: return False
         match = self.TABLE_SEP_RE.match(line)
         return match is not None
     
-    def _escape_literals(self, text: str) -> str:
+    def _escape_literals(self, text):
         return text.replace('`', '\\`')
 
-    def format_table(self, rows: List[str]) -> List[str]:
+    def format_table(self, rows):
         if len(rows) < 2: return rows
         
         # Parse header and separator
@@ -407,7 +407,7 @@ class MarkdownToMicron:
         
         return result
     
-    def _parse_table_row(self, line: str) -> List[str]:
+    def _parse_table_row(self, line):
         line = line.strip()
         if line.startswith('|'): line = line[1:]
         if line.endswith('|'):   line = line[:-1]
@@ -430,7 +430,7 @@ class MarkdownToMicron:
         cells.append(current.strip())
         return cells
     
-    def _parse_table_alignments(self, line: str) -> List[str]:
+    def _parse_table_alignments(self, line):
         cells = self._parse_table_row(line)
         alignments = []
         for cell in cells:
@@ -441,8 +441,7 @@ class MarkdownToMicron:
         
         return alignments
     
-    def _visible_width(self, text: str) -> int:
-        # Remove Micron tags
+    def _visible_width(self, text):
         text = re.sub(r'`[FB][0-9a-fA-F]{3}', '', text)
         text = re.sub(r'`[!*_]', '', text)
         text = re.sub(r'`f`b', '', text)
@@ -450,7 +449,7 @@ class MarkdownToMicron:
         text = re.sub(r'`b', '', text)
         return self.display_width(text)
     
-    def _pad_cell(self, text: str, width: int, align: str) -> str:
+    def _pad_cell(self, text, width, align):
         text = self._truncate_cell(text, width)
         text_width = self._visible_width(text)
         padding = width - text_width
@@ -464,7 +463,7 @@ class MarkdownToMicron:
         else:
             return text + " " * padding
     
-    def _truncate_cell(self, text: str, width: int) -> str:
+    def _truncate_cell(self, text, width):
         if self._visible_width(text) <= width: return text
         
         stripped = text
@@ -478,6 +477,6 @@ class MarkdownToMicron:
         return truncated
 
 
-def convert_markdown_to_micron(text: str) -> str:
+def convert_markdown_to_micron(text):
     converter = MarkdownToMicron()
     return converter.format_block(text)
