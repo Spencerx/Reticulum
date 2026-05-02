@@ -187,7 +187,7 @@ class NomadNetworkNode():
     def m_divider(self, char="\u2500"): return f"-{char}\n"
     def m_escape(self, text): return text.replace("`", "\\`")
 
-    def m_link(self, _label, _path, **fields):
+    def m_link_r(self, _label, _path, **fields):
         def sanitize_v(value): return urllib.parse.quote_plus(str(value).encode("utf-8"))
         def sanitize_label(value): return value.replace("[", "").replace("]", "").replace("`", "")
         field_str = ""
@@ -196,6 +196,16 @@ class NomadNetworkNode():
             for k, v in fields.items(): field_parts.append(f"{k}={sanitize_v(v)}")
             field_str = "`" + "|".join(field_parts)
         return f"`[{sanitize_label(_label)}`:{_path}{field_str}]"
+
+    def m_link(self, _label, _path, **fields):
+        def sanitize_v(value): return urllib.parse.quote_plus(str(value).encode("utf-8"))
+        def sanitize_label(value): return value.replace("[", "").replace("]", "").replace("`", "")
+        field_str = ""
+        if fields:
+            field_parts = []
+            for k, v in fields.items(): field_parts.append(f"{k}={sanitize_v(v)}")
+            field_str = "`" + "|".join(field_parts)
+        return f"`!`[{sanitize_label(_label)}`:{_path}{field_str}]`!"
 
     def m_align(self, text, align="left"):
         align_tag = {"center": "c", "left": "l", "right": "r"}.get(align, "a")
@@ -371,7 +381,7 @@ class NomadNetworkNode():
         # Validate ref exists
         resolved_ref = self.resolve_ref(repo_path, ref)
         if not resolved_ref:
-            content = self.m_heading("Ref Not Found", 1) + f"\n\nThe ref '{ref}' does not exist in this repository.\n"
+            content = self.m_heading("Error", 2) + f"\n\nThe ref '{ref}' does not exist in this repository.\n"
             content += f"\n" + self.m_link("View All Refs", self.PATH_REFS, g=group_name, r=repo_name) + "\n"
             return self.render_template(content, st=st)
 
@@ -427,8 +437,8 @@ class NomadNetworkNode():
             # Parent directory link (if not at root)
             if tree_path:
                 parent_path = "/".join(tree_path.rstrip("/").split("/")[:-1])
-                ilink = self.m_link(f"{i_folder}", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=parent_path)
-                parent_link = self.m_link(" ../", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=parent_path)
+                ilink = self.m_link_r(f"{i_folder}", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=parent_path)
+                parent_link = self.m_link_r(" ../", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=parent_path)
                 content_parts.append(f"{self.CLR_FOLDER}{ilink}`f{parent_link}\n")
 
             for entry in page_entries:
@@ -439,8 +449,8 @@ class NomadNetworkNode():
                 # Directory
                 if entry_type == "tree":
                     subpath = tree_path + "/" + entry_name if tree_path else entry_name
-                    ilink = self.m_link(f"{i_folder}", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=subpath)
-                    link  = self.m_link(f" {entry_name}/", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=subpath)
+                    ilink = self.m_link_r(f"{i_folder}", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=subpath)
+                    link  = self.m_link_r(f" {entry_name}/", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=subpath)
                     content_parts.append(f"{self.CLR_FOLDER}{ilink}`f{link}\n")
 
                 # Submodule
@@ -456,8 +466,8 @@ class NomadNetworkNode():
                 else:
                     size_str = self.format_size(entry.get("size", 0))
                     subpath = tree_path + "/" + entry_name if tree_path else entry_name
-                    ilink = self.m_link(f"{i_file}", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=subpath)
-                    link  = self.m_link(f" {entry_name}", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=subpath)
+                    ilink = self.m_link_r(f"{i_file}", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=subpath)
+                    link  = self.m_link_r(f" {entry_name}", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=subpath)
                     content_parts.append(f"{self.CLR_FILE}{ilink}`f{link} `F666({size_str})`f\n")
 
             content_parts.append("\n")
@@ -654,23 +664,33 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "")   if data else ""
         commit_hash = data.get("var_h", "") if data else ""
 
+        if not group_name or not repo_name:
+            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            return self.render_template(content, st=st)
+
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
-            content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
+            content = self.m_heading("Error", 2) + "\nThe requested repository was not found.\n"
             return self.render_template(content, st=st)
 
         repo_path = repo["path"]
 
         # Validate commit hash
         if not commit_hash or len(commit_hash) < 7:
-            content = self.m_heading("Invalid Commit", 1) + "\n\nNo valid commit hash specified.\n"
+            content = self.m_heading("Error", 2) + "\nNo valid commit hash specified.\n"
             return self.render_template(content, st=st)
 
         # Resolve and validate the commit hash
         resolved_hash = self.resolve_ref(repo_path, commit_hash)
         if not resolved_hash:
-            content = self.m_heading("Commit Not Found", 1) + f"\n\nThe commit '{commit_hash}' does not exist in this repository.\n"
+            content = self.m_heading("Error", 2) + f"\nThe commit {commit_hash} does not exist in this repository.\n"
             return self.render_template(content, st=st)
+
+        # Breadcrumb navigation
+        nav_parts = []
+        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / {resolved_hash[:7]}"
+        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
+        nav_content = "".join(nav_parts)
 
         # Verify it's actually a commit object
         try:
@@ -679,18 +699,14 @@ class NomadNetworkNode():
                                          timeout=self.GIT_COMMAND_TIMEOUT, check=False)
 
             if type_result.returncode != 0 or type_result.stdout.strip() != "commit":
-                content = self.m_heading("Invalid Object", 1) + f"\n\nThe hash '{commit_hash}' does not refer to a commit.\n"
+                content = self.m_heading("Error", 2) + f"\nThe hash {commit_hash} does not refer to a commit.\n"
                 return self.render_template(content, st=st)
         
         except Exception:
-            content = self.m_heading("Error", 1) + "\n\nCould not verify commit object.\n"
+            content = self.m_heading("Error", 2) + "\nCould not verify commit object.\n"
             return self.render_template(content, st=st)
 
         content_parts = []
-
-        # Breadcrumb navigation
-        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / {resolved_hash[:7]}"
-        content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
 
         commit_info = self.get_commit_info(repo_path, resolved_hash)
         if not commit_info:
@@ -698,35 +714,33 @@ class NomadNetworkNode():
             page_content = "".join(content_parts)
             return self.render_template(page_content, st=st)
 
-        content_parts.append(self.m_heading(f"Commit {resolved_hash[:7]}", 1))
+        content_parts.append(self.m_heading(f"Commit {resolved_hash}", 2))
         content_parts.append("\n")
+
+        # Navigation to tree at this commit
+        i_folder = self.icon("folder")
+        content_parts.append(f"{self.m_link(f'{i_folder} Browse tree at this commit', self.PATH_TREE, g=group_name, r=repo_name, ref=resolved_hash)}\n\n")
 
         # Commit metadata
-        content_parts.append(self.m_heading("Details", 2))
-        content_parts.append("\n")
-        content_parts.append(f"  Hash:    {resolved_hash}\n")
-
         if commit_info.get("parents"):
             parent_links = []
             for parent_hash in commit_info["parents"]:
                 parent_link = self.m_link(parent_hash[:7], self.PATH_COMMIT, g=group_name, r=repo_name, h=parent_hash)
                 parent_links.append(parent_link)
 
-            content_parts.append(f"  Parents: {' '.join(parent_links)}\n")
+            content_parts.append(f"Parents: {' '.join(parent_links)}\n")
 
-        content_parts.append(f"  Author:  {self.m_escape(commit_info['author_name'])} <{self.m_escape(commit_info['author_email'])}>\n")
-        content_parts.append(f"  Date:    {commit_info['author_date']}\n")
+        content_parts.append(f"Author:  {self.m_escape(commit_info['author_name'])} <{self.m_escape(commit_info['author_email'])}>\n")
+        content_parts.append(f"Date:    {commit_info['author_date']}\n")
 
         if commit_info.get("committer_name") != commit_info.get("author_name"):
-            content_parts.append(f"  Commit:  {self.m_escape(commit_info['committer_name'])} <{self.m_escape(commit_info['committer_email'])}>\n")
-            content_parts.append(f"  Date:    {commit_info['committer_date']}\n")
+            content_parts.append(f"Commit:  {self.m_escape(commit_info['committer_name'])} <{self.m_escape(commit_info['committer_email'])}>\n")
+            content_parts.append(f"Date:    {commit_info['committer_date']}\n")
 
         content_parts.append("\n")
 
         # Commit message
         if commit_info.get("message"):
-            content_parts.append(self.m_heading("Message", 2))
-            content_parts.append("\n")
             content_parts.append(self.m_escape(commit_info["message"]) + "\n")
             content_parts.append("\n")
 
@@ -771,14 +785,8 @@ class NomadNetworkNode():
             formatted_diff = self.format_diff(commit_info["diff"])
             content_parts.append(f"{formatted_diff.lstrip()}")
 
-        # Navigation to tree at this commit
-        content_parts.append("\n")
-        content_parts.append(self.m_heading("Browse", 2))
-        content_parts.append("\n")
-        content_parts.append(f"  {self.m_link('📁 Browse files at this commit', self.PATH_TREE, g=group_name, r=repo_name, ref=resolved_hash)}\n")
-
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st=st)
+        return self.render_template(page_content, nav_content=nav_content, st=st)
 
     def serve_refs_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -788,19 +796,24 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "") if data else ""
         ref_type = data.get("var_type", "") if data else ""  # "heads", "tags", or empty for both
 
-        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
-        if not repo:
-            content = self.m_heading("Not Found", 1) + "\n\nThe requested repository was not found.\n"
-            return self.render_template(content, st=st)
-
-        repo_path = repo["path"]
-
         content_parts = []
         nav_parts = []
 
         # Breadcrumb navigation
         breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / refs"
         nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
+        nav_content = "".join(nav_parts)
+
+        if not group_name or not repo_name:
+            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            return self.render_template(content, st=st)
+
+        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
+        if not repo:
+            content = self.m_heading("Error", 2) + "\nThe requested repository was not found.\n"
+            return self.render_template(content, nav_content=nav_content, st=st)
+
+        repo_path = repo["path"]
 
         # Filtering links
         i_sep = self.icon("sep")
@@ -874,7 +887,6 @@ class NomadNetworkNode():
             content_parts.append("No refs found in this repository.\n")
 
         page_content = "".join(content_parts).rstrip()+"\n"
-        nav_content = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, st=st)
 
     #######################
