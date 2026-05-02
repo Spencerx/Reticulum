@@ -32,6 +32,7 @@ No kernel modules or drivers are required. Reticulum runs completely in
 userland, and can run on practically any system that runs Python 3.
 
 >> Read The Manual
+
 The full documentation for Reticulum is available at [markqvist.github.io/Reticulum/manual/](https://markqvist.github.io/Reticulum/manual/).
 
 You can also download the [Reticulum manual as a PDF](https://github.com/markqvist/Reticulum/raw/master/docs/Reticulum%20Manual.pdf) or [as an e-book in EPUB format](https://github.com/markqvist/Reticulum/raw/master/docs/Reticulum%20Manual.epub).
@@ -39,6 +40,7 @@ You can also download the [Reticulum manual as a PDF](https://github.com/markqvi
 For more info, see [reticulum.network](https://reticulum.network/) and [the FAQ section of the wiki](https://github.com/markqvist/Reticulum/wiki/Frequently-Asked-Questions).
 
 >> Notable Features
+
 • Coordination-less globally unique addressing and identification
 • Fully self-configuring multi-hop routing over heterogeneous carriers
 • Flexible scalability over heterogeneous topologies
@@ -89,6 +91,7 @@ The reference implementation is licensed under the Reticulum License.
 The Reticulum Protocol was dedicated to the Public Domain in 2016.
 
 >> Examples of Reticulum Applications
+
 If you want to quickly get an idea of what Reticulum can do, take a look at the
 [Programs Using Reticulum](https://reticulum.network/manual/software.html)
 section of the manual, or the following resources:
@@ -101,6 +104,7 @@ section of the manual, or the following resources:
 • You can use the included [rnsh](https://reticulum.network/manual/using.html#the-rnsh-utility) program to establish remote shell sessions over Reticulum.
 
 >> Where can Reticulum be used?
+
 Over practically any medium that can support at least a half-duplex channel
 with greater throughput than 5 bits per second, and an MTU of 500 bytes. Data radios,
 modems, LoRa radios, serial lines, AX.25 TNCs, amateur radio digital modes,
@@ -127,6 +131,7 @@ network can communicate with nodes on the LoRa and packet radio sides of the
 network, and vice versa.
 
 >> How do I get started?
+
 The best way to get started with the Reticulum Network Stack depends on what
 you want to do. For full details and examples, have a look at the 
 [Getting Started Fast](https://markqvist.github.io/Reticulum/manual/gettingstartedfast.html) 
@@ -136,24 +141,24 @@ To simply install Reticulum and related utilities on your system, the easiest wa
 You can then start any program that uses Reticulum, or start Reticulum as a system service with
 [the rnsd utility](https://markqvist.github.io/Reticulum/manual/using.html#the-rnsd-utility).
 
-```bash
+`=
 pip install rns
-```
+`=
 
 If you are using an operating system that blocks normal user package installation via `pip`,
 you can return `pip` to normal behaviour by editing the `~/.config/pip/pip.conf` file,
 and adding the following directive in the `[global]` section:
 
-```text
+`=
 [global]
 break-system-packages = true
-```
+`=
 
 Alternatively, you can use the `pipx` tool to install Reticulum in an isolated environment:
 
-```bash
+`=
 pipx install rns
-```
+`=
 
 When first started, Reticulum will create a default configuration file,
 providing basic connectivity to other Reticulum peers that might be locally
