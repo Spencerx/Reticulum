@@ -38,18 +38,9 @@ from RNS.Utilities.rngit.util import MarkdownToMicron
 from RNS.vendor.configobj import ConfigObj
 from RNS._version import __version__
 
-DEFAULT_TEMPLATE = """#!c=0
->{NODE_NAME}
-
-{PAGE_CONTENT}
-<
--
-`a`F666`[Served by rngit {VERSION}`:/page/index.mu] - {GEN_TIME}`f"""
-
 class NomadNetworkNode():
     APP_NAME              = "nomadnetwork"
     JOBS_INTERVAL         = 5
-    BASE_TEMPLATE         = DEFAULT_TEMPLATE
 
     PATH_INDEX            = "/page/index.mu"
     PATH_GROUP            = "/page/group.mu"
@@ -78,7 +69,12 @@ class NomadNetworkNode():
         self.announce_interval = owner.announce_interval
         self.last_announce     = 0
         self.null_ident        = RNS.Identity.from_bytes(bytes(64))
-        self.md_converter      = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH)
+        self.mdc               = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH)
+        self.templates         = {}
+
+        self.templates["base"]  = DEFAULT_BASE_TEMPLATE
+        self.templates["front"] = DEFAULT_FRONT_TEMPLATE
+        self.templates["group"] = DEFAULT_GROUP_TEMPLATE
         
         self.destination = RNS.Destination(self.identity, RNS.Destination.IN, RNS.Destination.SINGLE, self.APP_NAME, "node")
         self.destination.set_link_established_callback(self.remote_connected)
@@ -121,14 +117,22 @@ class NomadNetworkNode():
         self.destination.register_request_handler(self.PATH_COMMIT,  response_generator=self.serve_commit_page,  allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_REFS,    response_generator=self.serve_refs_page,    allow=RNS.Destination.ALLOW_ALL)
 
-    def render_template(self, page_content, st=None):
-        template = self.BASE_TEMPLATE
-        template = template.replace("{PAGE_CONTENT}", page_content)
-        template = template.replace("{NODE_NAME}", self.node_name)
-        template = template.replace("{VERSION}", __version__)
+    def render_template(self, page_content, nav_content=None, template=None, st=None):
+        if template and template in self.templates:
+            template = self.templates[template]
+            page_content = template.replace("{PAGE_CONTENT}", page_content)
+
+        base_template = self.templates["base"]
+        base_template = base_template.replace("{PAGE_CONTENT}", page_content)
+        base_template = base_template.replace("{NODE_NAME}", self.node_name)
+        base_template = base_template.replace("{VERSION}", __version__)
+        
+        if nav_content: base_template = base_template.replace("{NAVIGATION}", nav_content)
+        else:           base_template = base_template.replace("{NAVIGATION}", "")
+
         gt = f"Generated in {RNS.prettytime(time.time()-st)}" if st else "Unknown generation time"
-        template = template.replace("{GEN_TIME}", gt)
-        return template.encode("utf-8")
+        base_template = base_template.replace("{GEN_TIME}", gt)
+        return base_template.encode("utf-8")
 
     #############################
     # Micron Generation Helpers #
@@ -166,28 +170,26 @@ class NomadNetworkNode():
         RNS.log(f"Front page request from {remote_identity}", RNS.LOG_DEBUG)
 
         content_parts = []
-        content_parts.append(self.m_heading("Git Repositories", 1))
-        content_parts.append(f"\n")
+        nav_parts     = []
 
         accessible_groups = self.get_accessible_groups(remote_identity)
 
+        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} /"
+        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
+
         if not accessible_groups: content_parts.append("No repository groups available.\n")
         else:
-            content_parts.append(self.m_heading("Available Groups", 2))
-            content_parts.append("\n")
-
             for group_name in sorted(accessible_groups.keys()):
                 group = accessible_groups[group_name]
                 repo_count = len(group.get("repositories", {}))
                 repo_word = "repository" if repo_count == 1 else "repositories"
                 
-                link = self.m_link(f"{group_name}", self.PATH_GROUP, g=group_name)
-                content_parts.append(f"  {link} - {repo_count} {repo_word}\n")
-
-        # content_parts.append("\n")
+                link = self.m_link(f" {self.mdc.BULLET} {group_name}", self.PATH_GROUP, g=group_name)
+                content_parts.append(f"{link} ({repo_count} {repo_word})\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st)
+        nav_content = "".join(nav_parts)
+        return self.render_template(page_content, nav_content=nav_content, template="front", st=st)
 
     def serve_group_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -198,18 +200,17 @@ class NomadNetworkNode():
         
         if not group_name or group_name not in self.owner.groups or not accessible_repos:
             content = self.m_heading("Group Not Found", 1) + "\n\nThe requested group does not exist or you do not have access to any repositories in it.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         content_parts = []
+        nav_parts     = []
         
         breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {group_name}"
-        content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")        
-        content_parts.append(self.m_heading(group_name, 1))
-        content_parts.append("\n")
+        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
 
-        if not accessible_repos: content_parts.append("No repositories available in this group.\n")
+        if not accessible_repos: content_parts.append("No repositories available.\n")
         else:
-            content_parts.append(self.m_heading("Repositories", 2))
+            content_parts.append(self.m_heading("Repositories", 1))
             content_parts.append("\n")
 
             for repo_name in sorted(accessible_repos.keys()):
@@ -217,15 +218,14 @@ class NomadNetworkNode():
                 
                 description = self.get_repository_description(repo["path"])
                 
-                link = self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)
-                content_parts.append(f"  {link}\n")
-                if description: content_parts.append(f"    {self.m_escape(description)}\n")
-                content_parts.append("\n")
-
-        content_parts.append("\n")
+                link = self.m_link(f" {self.mdc.BULLET} {repo_name}", self.PATH_REPO, g=group_name, r=repo_name)
+                content_parts.append(f"{link}")
+                if description: content_parts.append(f" - {description}\n")
+                else:           content_parts.append("\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st)
+        nav_content = "".join(nav_parts)
+        return self.render_template(page_content, nav_content=nav_content, template="group", st=st)
 
     def serve_repo_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -237,7 +237,7 @@ class NomadNetworkNode():
 
         if not repo:
             content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         content_parts = []
         
@@ -289,7 +289,7 @@ class NomadNetworkNode():
             content_parts.append("\n")
             
             if readme_is_markdown:
-                converted = self.md_converter.format_block(readme_content)
+                converted = self.mdc.format_block(readme_content)
                 content_parts.append(converted)
             
             else: content_parts.append(f"`=\n{readme_content}\n`=")
@@ -304,7 +304,7 @@ class NomadNetworkNode():
         content_parts.append("\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st)
+        return self.render_template(page_content, st=st)
 
     def serve_tree_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -326,7 +326,7 @@ class NomadNetworkNode():
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
             content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         repo_path = repo["path"]
 
@@ -335,7 +335,7 @@ class NomadNetworkNode():
         if not resolved_ref:
             content = self.m_heading("Ref Not Found", 1) + f"\n\nThe ref '{ref}' does not exist in this repository.\n"
             content += f"\n" + self.m_link("View All Refs", self.PATH_REFS, g=group_name, r=repo_name) + "\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         content_parts = []
 
@@ -441,7 +441,7 @@ class NomadNetworkNode():
         if content_parts[-1] == "\n": content_parts[-1] = ""
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st)
+        return self.render_template(page_content, st=st)
 
     def serve_blob_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -456,7 +456,7 @@ class NomadNetworkNode():
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
             content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         repo_path = repo["path"]
 
@@ -464,12 +464,12 @@ class NomadNetworkNode():
         resolved_ref = self.resolve_ref(repo_path, ref)
         if not resolved_ref:
             content = self.m_heading("Ref Not Found", 1) + f"\n\nThe ref '{ref}' does not exist in this repository.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         # Validate file path
         if not file_path:
             content = self.m_heading("Invalid Path", 1) + "\n\nNo file path specified.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         content_parts = []
 
@@ -538,7 +538,7 @@ class NomadNetworkNode():
                     content_parts.append("Error reading file content.\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st)
+        return self.render_template(page_content, st=st)
 
     def serve_commits_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -560,7 +560,7 @@ class NomadNetworkNode():
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
             content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         repo_path = repo["path"]
 
@@ -568,7 +568,7 @@ class NomadNetworkNode():
         resolved_ref = self.resolve_ref(repo_path, ref)
         if not resolved_ref:
             content = self.m_heading("Ref Not Found", 1) + f"\n\nThe ref '{ref}' does not exist in this repository.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         content_parts = []
 
@@ -622,7 +622,7 @@ class NomadNetworkNode():
                 content_parts.append("  " + " | ".join(nav_links) + "\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st)
+        return self.render_template(page_content, st=st)
 
     def serve_commit_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -635,20 +635,20 @@ class NomadNetworkNode():
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
             content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         repo_path = repo["path"]
 
         # Validate commit hash
         if not commit_hash or len(commit_hash) < 7:
             content = self.m_heading("Invalid Commit", 1) + "\n\nNo valid commit hash specified.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         # Resolve and validate the commit hash
         resolved_hash = self.resolve_ref(repo_path, commit_hash)
         if not resolved_hash:
             content = self.m_heading("Commit Not Found", 1) + f"\n\nThe commit '{commit_hash}' does not exist in this repository.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         # Verify it's actually a commit object
         try:
@@ -658,11 +658,11 @@ class NomadNetworkNode():
 
             if type_result.returncode != 0 or type_result.stdout.strip() != "commit":
                 content = self.m_heading("Invalid Object", 1) + f"\n\nThe hash '{commit_hash}' does not refer to a commit.\n"
-                return self.render_template(content, st)
+                return self.render_template(content, st=st)
         
         except Exception:
             content = self.m_heading("Error", 1) + "\n\nCould not verify commit object.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         content_parts = []
 
@@ -674,7 +674,7 @@ class NomadNetworkNode():
         if not commit_info:
             content_parts.append(self.m_heading("Error", 1) + "\n\nCould not retrieve commit information.\n")
             page_content = "".join(content_parts)
-            return self.render_template(page_content, st)
+            return self.render_template(page_content, st=st)
 
         content_parts.append(self.m_heading(f"Commit {resolved_hash[:7]}", 1))
         content_parts.append("\n")
@@ -756,7 +756,7 @@ class NomadNetworkNode():
         content_parts.append(f"  {self.m_link('📁 Browse files at this commit', self.PATH_TREE, g=group_name, r=repo_name, ref=resolved_hash)}\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st)
+        return self.render_template(page_content, st=st)
 
     def serve_refs_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -769,7 +769,7 @@ class NomadNetworkNode():
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
             content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
-            return self.render_template(content, st)
+            return self.render_template(content, st=st)
 
         repo_path = repo["path"]
 
@@ -859,7 +859,7 @@ class NomadNetworkNode():
         content_parts.append("  " + " | ".join(filter_links) + "\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st)
+        return self.render_template(page_content, st=st)
 
     #######################
     # Git Data Extraction #
@@ -874,12 +874,11 @@ class NomadNetworkNode():
             if result.returncode == 0 and result.stdout.strip(): return result.stdout.strip()
 
             # Fall back to description file
-            desc_path = os.path.join(repo_path, "description")
+            desc_path = f"{repo_path}.description"
             if os.path.isfile(desc_path):
                 with open(desc_path, "r") as f:
                     desc = f.read().strip()
-                    # Skip default template descriptions
-                    if desc and not desc.startswith("Unnamed repository"): return desc
+                    if desc: return desc
 
         except Exception as e: RNS.log(f"Error getting repository description: {e}", RNS.LOG_DEBUG)
 
@@ -1396,3 +1395,21 @@ class NomadNetworkNode():
             return all_repos[repo_name]
         
         return None
+
+# Global base template
+DEFAULT_BASE_TEMPLATE = """#!c=0
+>{NODE_NAME}
+
+{NAVIGATION}
+{PAGE_CONTENT}
+<
+-
+`a`F666`[Served by rngit {VERSION}`:/page/index.mu] - {GEN_TIME}`f"""
+
+# Front page template
+DEFAULT_FRONT_TEMPLATE = """>Groups
+
+{PAGE_CONTENT}"""
+
+# Repositories page template
+DEFAULT_GROUP_TEMPLATE = """{PAGE_CONTENT}"""
