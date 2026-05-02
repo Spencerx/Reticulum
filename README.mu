@@ -1,4 +1,4 @@
-> Reticulum Network Stack
+>> Reticulum Network Stack
 
 To understand the foundational philosophy and goals of this system, read the [Zen of Reticulum](Zen%20of%20Reticulum.md).
 
