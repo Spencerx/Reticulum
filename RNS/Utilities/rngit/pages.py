@@ -1215,7 +1215,6 @@ class NomadNetworkNode():
 
                 parts = line.split(sep, 4)
                 if len(parts) >= 5:
-                    RNS.log(parts)
                     commits.append({ "hash": parts[0],
                                      "subject": parts[1],
                                      "author": parts[2],
