@@ -57,6 +57,19 @@ class NomadNetworkNode():
     SHOW_DIFF_BY_DEFAULT  = True
     GIT_COMMAND_TIMEOUT   = 5
     MAX_RENDER_WIDTH      = 100
+    USE_NERDFONTS         = True
+
+    U_ICON_SEP      = "•"
+    U_ICON_FOLDER   = "🗀"
+    U_ICON_BRANCH   = "⑃"
+    U_ICON_TAG      = "⌆"
+    U_ICON_COMMITS  = "🖹"
+
+    NF_ICON_SEP     = "•"
+    NF_ICON_FOLDER  = "󰉖"
+    NF_ICON_BRANCH  = "󰘬"
+    NF_ICON_TAG     = "󰓼"
+    NF_ICON_COMMITS = "󰋚"
 
     def __init__(self, owner=None):
         if not owner: raise TypeError(f"Invalid owner {owner} for {self}")
@@ -75,6 +88,7 @@ class NomadNetworkNode():
         self.templates["base"]  = DEFAULT_BASE_TEMPLATE
         self.templates["front"] = DEFAULT_FRONT_TEMPLATE
         self.templates["group"] = DEFAULT_GROUP_TEMPLATE
+        self.use_nerdfonts      = self.USE_NERDFONTS
         
         self.destination = RNS.Destination(self.identity, RNS.Destination.IN, RNS.Destination.SINGLE, self.APP_NAME, "node")
         self.destination.set_link_established_callback(self.remote_connected)
@@ -85,6 +99,23 @@ class NomadNetworkNode():
 
         self._should_run = True
         self._ready = True
+
+    def icon(self, name):
+        if self.use_nerdfonts:
+            if   name == "sep":     return self.NF_ICON_SEP
+            elif name == "folder":  return self.NF_ICON_FOLDER
+            elif name == "branch":  return self.NF_ICON_BRANCH
+            elif name == "commits": return self.NF_ICON_COMMITS
+            elif name == "tag":     return self.NF_ICON_TAG
+            else:                   return ""
+
+        else:
+            if   name == "sep":     return self.U_ICON_SEP
+            elif name == "folder":  return self.U_ICON_FOLDER
+            elif name == "branch":  return self.U_ICON_BRANCH
+            elif name == "commits": return self.U_ICON_COMMITS
+            elif name == "tag":     return self.U_ICON_TAG
+            else:                   return ""
 
     def jobs(self):
         while self._should_run:
@@ -196,10 +227,15 @@ class NomadNetworkNode():
         RNS.log(f"Group page request from {remote_identity}", RNS.LOG_DEBUG)
 
         group_name = data.get("var_g", "") if data else ""
+
+        if not group_name:
+            content = self.m_heading("Error", 1) + "\nInvalid request.\n"
+            return self.render_template(content, st=st)
+
         accessible_repos = self.get_accessible_repositories(remote_identity, group_name)
         
         if not group_name or group_name not in self.owner.groups or not accessible_repos:
-            content = self.m_heading("Group Not Found", 1) + "\n\nThe requested group does not exist or you do not have access to any repositories in it.\n"
+            content = self.m_heading("Group Not Found", 1) + "\nThe requested group was not found.\n"
             return self.render_template(content, st=st)
 
         content_parts = []
@@ -233,60 +269,68 @@ class NomadNetworkNode():
 
         group_name = data.get("var_g", "") if data else ""
         repo_name = data.get("var_r", "") if data else ""
+
+        if not group_name or not repo_name:
+            content = self.m_heading("Error", 1) + "\nInvalid request.\n"
+            return self.render_template(content, st=st)
+        
+        content_parts = []
+        nav_parts = []
+        
+        # Breadcrumb navigation
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {repo_name}"
+        nav_parts.append(breadcrumb + "\n")
+
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
 
         if not repo:
-            content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
-            return self.render_template(content, st=st)
-
-        content_parts = []
+            content = self.m_heading("Not Found", 1) + "\nThe requested repository was not found.\n"
+            return self.render_template(content, nav_content="".join(nav_parts), st=st)
         
-        # Breadcrumb navigation
-        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {repo_name}"
-        content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
-        
-        content_parts.append(self.m_heading(repo_name, 1))
-        content_parts.append("\n")
-
-        # Repository metadata
         description = self.get_repository_description(repo["path"])
-        if description: content_parts.append(f"{self.m_escape(description)}\n\n")
+        if description: description = f"{description}\n"
+        else:           description = ""
 
-        # Navigation links
-        content_parts.append(self.m_heading("Browse", 2))
-        content_parts.append("\n")
-        content_parts.append(f"  {self.m_link('📁 Files', self.PATH_TREE, g=group_name, r=repo_name, ref='HEAD')}\n")
-        content_parts.append(f"  {self.m_link('📝 Commits', self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')}\n")
-        content_parts.append(f"  {self.m_link('🏷️ Refs', self.PATH_REFS, g=group_name, r=repo_name)}\n")
-        content_parts.append("\n")
+        content_parts.append(f"{description}")
 
         # Get refs information
         refs = self.get_repository_refs(repo["path"])
-        if refs:
-            content_parts.append(self.m_heading("Branches", 2))
-            content_parts.append("\n")
+        branch_count = len(refs.get("heads", [])) if refs else 0
+        tag_count = len(refs["tags"]) if refs else 0
+        
+        sep = self.icon("sep")
+        content_parts.append("\n")
+        content_parts.append(f"{self.m_link(self.icon("folder")+" Files", self.PATH_TREE, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
+        content_parts.append(f"{self.m_link(self.icon("commits")+" Commits", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
+        content_parts.append(f"{self.m_link(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
+        content_parts.append(f"{self.m_link(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")}")
+        content_parts.append("\n\n<")
 
-            # Display first 10 branches
-            for ref in refs.get("heads", [])[:10]: content_parts.append(f"  {ref['name']}: {ref['short_hash']}\n")
-            if len(refs.get("heads", [])) > 10:    content_parts.append(f"  ... and {len(refs['heads']) - 10} more\n")
-            content_parts.append("\n")
+        
+        # if refs:
+        #     content_parts.append(self.m_heading("Branches", 2))
+        #     content_parts.append("\n")
 
-            if refs.get("tags"):
-                content_parts.append(self.m_heading("Tags", 2))
-                content_parts.append("\n")
+        #     # Display first 10 branches
+        #     for ref in refs.get("heads", [])[:10]: content_parts.append(f"  {ref['name']}: {ref['short_hash']}\n")
+        #     if len(refs.get("heads", [])) > 10:    content_parts.append(f"  ... and {len(refs['heads']) - 10} more\n")
+        #     content_parts.append("\n")
 
-                # Display first 10 tags
-                for ref in refs["tags"][:10]: content_parts.append(f"  {ref['name']}: {ref['short_hash']}\n")
-                if len(refs["tags"]) > 10:    content_parts.append(f"  ... and {len(refs['tags']) - 10} more\n")
-                content_parts.append("\n")
+        #     if refs.get("tags"):
+        #         content_parts.append(self.m_heading("Tags", 2))
+        #         content_parts.append("\n")
+
+        #         # Display first 10 tags
+        #         for ref in refs["tags"][:10]: content_parts.append(f"  {ref['name']}: {ref['short_hash']}\n")
+        #         if len(refs["tags"]) > 10:    content_parts.append(f"  ... and {len(refs['tags']) - 10} more\n")
+        #         content_parts.append("\n")
 
         # Readme content
         readme_content, readme_is_markdown = self.get_readme_content(repo["path"])
         if readme_content is not None:
-            content_parts.append(self.m_heading("README", 2))
-            content_parts.append("\n")
-            content_parts.append(self.m_divider())
-            content_parts.append("\n")
+            if not readme_content.lstrip().startswith("#"):
+                content_parts.append(self.m_divider())
+                content_parts.append("\n")
             
             if readme_is_markdown:
                 converted = self.mdc.format_block(readme_content)
@@ -304,7 +348,8 @@ class NomadNetworkNode():
         content_parts.append("\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st=st)
+        nav_content  = "".join(nav_parts)
+        return self.render_template(page_content, nav_content=nav_content, st=st)
 
     def serve_tree_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()

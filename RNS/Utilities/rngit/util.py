@@ -113,10 +113,12 @@ class MarkdownToMicron:
                 
                 if not in_code_block:
                     in_code_block = True
+                    result_lines.append(f"{self.CODE_BG}{self.CODE_FG}")
                     result_lines.append(self.LITERAL_START)
                 
                 else:
                     result_lines.append(self.LITERAL_END)
+                    result_lines.append(self.CODE_RESET)
                     in_code_block = False
             
             else:
