@@ -80,7 +80,7 @@ For more info, see [reticulum.network](https://reticulum.network/) and [the FAQ 
 The Python code in this repository is the Reference Implementation of Reticulum.
 The Reticulum Protocol is defined entirely and authoritatively by this reference
 implementation, and its associated manual. It is maintained by Mark Qvist,
-identified by the Reticulum Identity `<bc7291552be7a58f361522990465165c>`.
+identified by the Reticulum Identity `B333<bc7291552be7a58f361522990465165c>`b.
 
 Compatibility with the Reticulum Protocol is defined as having full interoperability,
 and sufficient functional parity with this reference implementation. Any specific protocol
@@ -97,7 +97,7 @@ If you want to quickly get an idea of what Reticulum can do, take a look at the
 section of the manual, or the following resources:
 
 • [LXMF](https://github.com/markqvist/lxmf) is a distributed, delay and disruption tolerant message transfer protocol built on Reticulum
-• The [LXST](https://github.com/markqvist/lxst) protocol and framework provides real-time audio and signals transport over Reticulum. It includes primitives and utilities for building voice-based applications and hardware devices, such as the `rnphone` program, that can be used to build hardware telephones.
+• The [LXST](https://github.com/markqvist/lxst) protocol and framework provides real-time audio and signals transport over Reticulum. It includes primitives and utilities for building voice-based applications and hardware devices, such as the `B333rnphone`b program, that can be used to build hardware telephones.
 • For an off-grid, encrypted and resilient mesh communications platform, see [Nomad Network](https://github.com/markqvist/NomadNet)
 • The Android, Linux, macOS and Windows app [Sideband](https://github.com/markqvist/Sideband) has a graphical interface and many advanced features, such as file transfers, image and voice messages, real-time voice calls, a distributed telemetry system, mapping capabilities and full plugin extensibility.
 • [MeshChatX](https://git.quad4.io/RNS-Things/MeshChatX) is a full-featured LXMF client with many built-in tools and functionalities, that also supports image and voice messages, file transfers and voice calls. It also includes a built-in page browser for browsing Nomad Network nodes.
@@ -137,35 +137,41 @@ you want to do. For full details and examples, have a look at the
 [Getting Started Fast](https://markqvist.github.io/Reticulum/manual/gettingstartedfast.html) 
 section of the [Reticulum Manual](https://markqvist.github.io/Reticulum/manual/).
 
-To simply install Reticulum and related utilities on your system, the easiest way is via `pip`.
+To simply install Reticulum and related utilities on your system, the easiest way is via `B333pip`b.
 You can then start any program that uses Reticulum, or start Reticulum as a system service with
 [the rnsd utility](https://markqvist.github.io/Reticulum/manual/using.html#the-rnsd-utility).
 
+`B333
 `=
 pip install rns
 `=
+`b
 
-If you are using an operating system that blocks normal user package installation via `pip`,
-you can return `pip` to normal behaviour by editing the `~/.config/pip/pip.conf` file,
-and adding the following directive in the `[global]` section:
+If you are using an operating system that blocks normal user package installation via `B333pip`b,
+you can return `B333pip`b to normal behaviour by editing the `B333~/.config/pip/pip.conf`b file,
+and adding the following directive in the `B333[global]`b section:
 
+`B333
 `=
 [global]
 break-system-packages = true
 `=
+`b
 
-Alternatively, you can use the `pipx` tool to install Reticulum in an isolated environment:
+Alternatively, you can use the `B333pipx`b tool to install Reticulum in an isolated environment:
 
+`B333
 `=
 pipx install rns
 `=
+`b
 
 When first started, Reticulum will create a default configuration file,
 providing basic connectivity to other Reticulum peers that might be locally
 reachable. The default config file contains a few examples, and references for
 creating a more complex configuration.
 
-If you have an old version of `pip` on your system, you may need to upgrade it first with `pip install pip --upgrade`. If you no not already have `pip` installed, you can install it using the package manager of your system with `sudo apt install python3-pip` or similar.
+If you have an old version of `B333pip`b on your system, you may need to upgrade it first with `B333pip install pip --upgrade`b. If you no not already have `B333pip`b installed, you can install it using the package manager of your system with `B333sudo apt install python3-pip`b or similar.
 
 For more detailed examples on how to expand communication over many mediums such 
 as packet radio or LoRa, serial ports, or over fast IP links and the Internet using 
@@ -178,18 +184,18 @@ viewing status and information, and other tasks. You can read more about these
 programs in the [Included Utility Programs](https://markqvist.github.io/Reticulum/manual/using.html#included-utility-programs) 
 section of the [Reticulum Manual](https://markqvist.github.io/Reticulum/manual/).
 
-• The system daemon `rnsd` for running Reticulum as an always-available service
-• An interface status utility called `rnstatus`, that displays information about interfaces
-• The path lookup and management tool `rnpath` letting you view and modify path tables
-• A diagnostics tool called `rnprobe` for checking connectivity to destinations
-• A simple file transfer program called `rncp` making it easy to transfer files between systems
-• The identity management and encryption utility `rnid` let's you manage Identities and encrypt/decrypt files
+• The system daemon `B333rnsd`b for running Reticulum as an always-available service
+• An interface status utility called `B333rnstatus`b, that displays information about interfaces
+• The path lookup and management tool `B333rnpath`b letting you view and modify path tables
+• A diagnostics tool called `B333rnprobe`b for checking connectivity to destinations
+• A simple file transfer program called `B333rncp`b making it easy to transfer files between systems
+• The identity management and encryption utility `B333rnid`b let's you manage Identities and encrypt/decrypt files
 • The `rnsh` program allows you to establish fully interactive shell session with remote systems
-• The remote command execution program `rnx` let's you run simple commands and programs and retrieve output from remote systems
-• The `rngit` program provides a full multi-repository Git node for serving repositories over Reticulum
-• The included `git-remote-rns` helper allows you to interact with Git repositories over Reticulum
+• The remote command execution program `B333rnx`b let's you run simple commands and programs and retrieve output from remote systems
+• The `B333rngit`b program provides a full multi-repository Git node for serving repositories over Reticulum
+• The included `B333git-remote-rns`b helper allows you to interact with Git repositories over Reticulum
 
-All tools, including `rnx` and `rncp`, work reliably and well even over very
+All tools, including `B333rnx`b and `B333rncp`b, work reliably and well even over very
 low-bandwidth links like LoRa or Packet Radio. For full-featured remote shells
 over Reticulum, also have a look at the [rnsh](https://github.com/acehoss/rnsh)
 program.
@@ -232,9 +238,9 @@ probably occur as real-world use is explored and understood. The API and wire-fo
 can be considered stable.
 
 >> Dependencies
-The installation of the default `rns` package requires only two external dependencies, listed
+The installation of the default `B333rns`b package requires only two external dependencies, listed
 below. Almost all systems and distributions have readily available packages for
-these dependencies, and when the `rns` package is installed with `pip`, they
+these dependencies, and when the `B333rns`b package is installed with `B333pip`b, they
 will be downloaded and installed as well.
 
 • [PyCA/cryptography](https://github.com/pyca/cryptography)
@@ -242,20 +248,20 @@ will be downloaded and installed as well.
 
 On more unusual systems, and in some rare cases, it might not be possible to
 install or even compile one or more of the above modules. In such situations,
-you can use the `rnspure` package instead, which require no external
-dependencies for installation. Please note that the contents of the `rns` and
-`rnspure` packages are *identical*. The only difference is that the `rnspure`
+you can use the `B333rnspure`b package instead, which require no external
+dependencies for installation. Please note that the contents of the `B333rns`b and
+`B333rnspure`b packages are *identical*. The only difference is that the `B333rnspure`b
 package lists no dependencies required for installation.
 
 No matter how Reticulum is installed and started, it will load external
 dependencies only if they are *needed* and *available*. If for example you want
 to use Reticulum on a system that cannot support
 [pyserial](https://github.com/pyserial/pyserial), it is perfectly possible to
-do so using the `rnspure` package, but Reticulum will not be able to use
+do so using the `B333rnspure`b package, but Reticulum will not be able to use
 serial-based interfaces. All other available modules will still be loaded when
 needed.
 
-**Please Note!** If you use the `rnspure` package to run Reticulum on systems
+**Please Note!** If you use the `B333rnspure`b package to run Reticulum on systems
 that do not support [PyCA/cryptography](https://github.com/pyca/cryptography),
 it is important that you read and understand the [Cryptographic
 Primitives](#cryptographic-primitives) section of this document.
@@ -312,18 +318,18 @@ intentionally compromised or weakened clone. The utilised primitives are:
 • Encrypted tokens are based on the [Fernet spec](https://github.com/fernet/spec/)
   • Ephemeral keys derived from an ECDH key exchange on Curve25519
   • HMAC using SHA256 for message authentication
-  • IVs must be generated through `os.urandom()` or better
+  • IVs must be generated through `B333os.urandom()`b or better
   • AES-256 in CBC mode with PKCS7 padding
   • No Fernet version and timestamp metadata fields
 • SHA-256
 • SHA-512
 
-In the default installation configuration, the `X25519`, `Ed25519`,
-and `AES-256-CBC` primitives are provided by [OpenSSL](https://www.openssl.org/)
+In the default installation configuration, the `B333X25519`b, `B333Ed25519`b,
+and `B333AES-256-CBC`b primitives are provided by [OpenSSL](https://www.openssl.org/)
 (via the [PyCA/cryptography](https://github.com/pyca/cryptography) package).
-The hashing functions `SHA-256` and `SHA-512` are provided by the standard
-Python [hashlib](https://docs.python.org/3/library/hashlib.html). The `HKDF`,
-`HMAC`, `Token` primitives, and the `PKCS7` padding function are always
+The hashing functions `B333SHA-256`b and `B333SHA-512`b are provided by the standard
+Python [hashlib](https://docs.python.org/3/library/hashlib.html). The `B333HKDF`b,
+`B333HMAC`b, `B333Token`b primitives, and the `B333PKCS7`b padding function are always
 provided by the following internal implementations:
 
 • [HKDF.py](RNS/Cryptography/HKDF.py)
@@ -343,8 +349,8 @@ amount of scrutiny, testing and review as those from OpenSSL.
 Please note that by default, installing Reticulum will **require** OpenSSL and
 PyCA to also be automatically installed if not already available. It is only
 possible to use the pure-python primitives if this requirement is specifically
-overridden by the user, for example by installing the `rnspure` package instead
-of the normal `rns` package, or by running directly from local source-code.
+overridden by the user, for example by installing the `B333rnspure`b package instead
+of the normal `B333rns`b package, or by running directly from local source-code.
 
 If you want to use the internal pure-python primitives, it is **highly
 advisable** that you have a good understanding of the risks that this pose, and
