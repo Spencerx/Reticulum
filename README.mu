@@ -190,7 +190,7 @@ section of the [Reticulum Manual](https://markqvist.github.io/Reticulum/manual/)
 • A diagnostics tool called `B333rnprobe`b for checking connectivity to destinations
 • A simple file transfer program called `B333rncp`b making it easy to transfer files between systems
 • The identity management and encryption utility `B333rnid`b let's you manage Identities and encrypt/decrypt files
-• The `rnsh` program allows you to establish fully interactive shell session with remote systems
+• The `B333rnsh`b program allows you to establish fully interactive shell session with remote systems
 • The remote command execution program `B333rnx`b let's you run simple commands and programs and retrieve output from remote systems
 • The `B333rngit`b program provides a full multi-repository Git node for serving repositories over Reticulum
 • The included `B333git-remote-rns`b helper allows you to interact with Git repositories over Reticulum
