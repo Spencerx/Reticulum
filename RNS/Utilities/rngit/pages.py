@@ -76,6 +76,7 @@ class NomadNetworkNode():
     CLR_FOLDER      = "`Ffe6"
     CLR_FILE        = "`F66d"
     CLR_DIM         = "`F666"
+    CLR_DIM_H       = "`F444"
 
     def __init__(self, owner=None):
         if not owner: raise TypeError(f"Invalid owner {owner} for {self}")
@@ -507,6 +508,7 @@ class NomadNetworkNode():
             return self.render_template(content, st=st)
 
         content_parts = []
+        nav_parts = []
 
         # Breadcrumb navigation
         breadcrumb_parts = [ self.m_link("Node", self.PATH_INDEX),
@@ -522,10 +524,7 @@ class NomadNetworkNode():
             else: breadcrumb_parts.append(self.m_link(component, self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=current_path))
 
         breadcrumb = " / ".join(breadcrumb_parts)
-        content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
-
-        content_parts.append(self.m_heading(file_path, 1))
-        content_parts.append(f"`F666Ref: {ref} ({resolved_ref[:8]})`f\n\n")
+        nav_parts.append(breadcrumb + "\n")
 
         # Get blob info
         blob_info = self.get_blob_info(repo_path, resolved_ref, file_path)
@@ -537,43 +536,31 @@ class NomadNetworkNode():
             is_symlink = blob_info.get("is_symlink", False)
             symlink_target = blob_info.get("symlink_target")
 
-            # File metadata
-            content_parts.append(self.m_heading("File Info", 2))
-            content_parts.append("\n")
-            content_parts.append(f"  Size: {self.format_size(size)} ({size} bytes)\n")
-            content_parts.append(f"  Type: {'Binary' if is_binary else 'Text'}\n")
-            if is_symlink: content_parts.append(f"  Symlink: → {self.m_escape(symlink_target or 'unknown')}\n")
-            content_parts.append("\n")
+            type_str = 'Binary' if is_binary else 'Text'
+            size_str = RNS.prettysize(size)
+            symlink_str = f" | Symlink → {self.m_escape(symlink_target or 'unknown')}" if is_symlink else ""
+            content_parts.append(self.m_heading(f"{file_path} {self.CLR_DIM_H}{ref} ({resolved_ref[:8]}) {type_str}, {size_str}{symlink_str}`f\n", 2))
 
             # Content display
             if is_symlink:
-                content_parts.append(self.m_heading("Symlink Target", 2))
-                content_parts.append("\n")
-                content_parts.append(f"  {self.m_escape(symlink_target or 'unknown')}\n")
+                content_parts.append(f"`*{self.m_escape(symlink_target or 'unknown')}`*\n")
 
             elif is_binary:
-                content_parts.append(self.m_heading("Binary File", 2))
-                content_parts.append("\n")
                 content_parts.append("This file appears to be binary and cannot be displayed as text.\n")
                 # TODO: Implement raw file downloads
 
             elif size > self.BLOB_SIZE_LIMIT:
-                content_parts.append(self.m_heading("File Too Large", 2))
-                content_parts.append("\n")
-                content_parts.append(f"This file is {self.format_size(size)}, which exceeds the display limit of {self.format_size(self.BLOB_SIZE_LIMIT)}.\n")
+                content_parts.append(f"This file is {RNS.prettysize(size)}, which exceeds the display limit of {RNS.prettysize(self.BLOB_SIZE_LIMIT)}.\n")
 
             else:
                 # Display file content
                 content = self.get_blob_content(repo_path, resolved_ref, file_path)
-                if content is not None:
-                    content_parts.append(self.m_heading("Content", 2))
-                    content_parts.append("\n")
-                    content_parts.append(f"`=\n{content}\n`=")
-                else:
-                    content_parts.append("Error reading file content.\n")
+                if content is not None: content_parts.append(f"`=\n{content}\n`=")
+                else:                   content_parts.append("Error reading file content.\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st=st)
+        nav_content = "".join(nav_parts)
+        return self.render_template(page_content, nav_content=nav_content, st=st)
 
     def serve_commits_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
