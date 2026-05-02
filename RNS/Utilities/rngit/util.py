@@ -257,7 +257,7 @@ class MarkdownToMicron:
         # TODO: Evaluate best way to handle both normal and nomadnet URLs
         text = text.replace('`', '')
         # url = url.replace('`', '\\`')
-        return f"`[{text}`{url}]"
+        return f"`!`[{text}`{url}]`!"
     
     def _format_header(self, match):
         hashes = match.group(1)
