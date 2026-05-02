@@ -217,12 +217,25 @@ class MarkdownToMicron:
         code_blocks = []
         def extract_code(match):
             code_blocks.append(match.group(1))
-            return f"\x00{len(code_blocks)-1}\x00"
+            return f"\x00CODE{len(code_blocks)-1}\x00"
+
+        links = []
+        def extract_link(match):
+            links.append((match.group(1), match.group(2)))
+            return f"\x00LINK{len(links)-1}\x00"
         
         text = self.INLINE_CODE_RE.sub(extract_code, text)
-        text = self.LINK_RE.sub(self._link_sub, text)
+        text = self.LINK_RE.sub(extract_link, text)
         text = self.BOLD_RE.sub(self._bold_sub, text)
         text = self.ITALIC_RE.sub(self._italic_sub, text)
+        
+        def restore_link(match):
+            idx = int(match.group(1))
+            text, url = links[idx]
+            text = text.replace('`', '')
+            return f"`!`[{text}`{url}]`!"
+        
+        text = re.sub(r'\x00LINK(\d+)\x00', restore_link, text)
         
         def restore_code(match):
             idx = int(match.group(1))
@@ -232,11 +245,11 @@ class MarkdownToMicron:
             # highlighted = self._highlight_inline_code(content)
             # if highlighted: return highlighted
             
-            # Plain inline code formatting
+            # Use plain inline code formatting
             content = content.replace('`', '\\`')
             return f"{self.CODE_BG_INLINE}{self.CODE_FG}{content}{self.CODE_RESET}"
         
-        text = re.sub(r'\x00(\d+)\x00', restore_code, text)
+        text = re.sub(r'\x00CODE(\d+)\x00', restore_code, text)
         return text
     
     def _highlight_inline_code(self, content):
@@ -250,15 +263,6 @@ class MarkdownToMicron:
     def _italic_sub(self, match):
         content = match.group(1) or match.group(2)
         return f"{self.ITALIC}{content}{self.ITALIC_END}"
-    
-    def _link_sub(self, match):
-        text = match.group(1)
-        url = match.group(2)
-        # TODO: Evaluate best way to handle both normal and nomadnet URLs
-        text = text.replace('`', '')
-        # url = url.replace('`', '\\`')
-        mu_link = f"`!`[{text}`{url}]`!"
-        return mu_link
     
     def _format_header(self, match):
         hashes = match.group(1)
