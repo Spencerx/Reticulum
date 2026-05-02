@@ -33,6 +33,7 @@ import time
 import subprocess
 import urllib.parse
 import RNS
+from datetime import datetime
 from RNS.Utilities.rngit import APP_NAME
 from RNS.Utilities.rngit.util import MarkdownToMicron
 from RNS.vendor.configobj import ConfigObj
@@ -53,7 +54,7 @@ class NomadNetworkNode():
 
     BLOB_SIZE_LIMIT       = 256 * 1024
     TREE_ENTRIES_PER_PAGE = 1000
-    COMMITS_PER_PAGE      = 20
+    COMMITS_PER_PAGE      = 100
     SHOW_DIFF_BY_DEFAULT  = True
     GIT_COMMAND_TIMEOUT   = 5
     MAX_RENDER_WIDTH      = 100
@@ -593,6 +594,7 @@ class NomadNetworkNode():
             return self.render_template(content, st=st)
 
         content_parts = []
+        nav_parts = []
 
         # Breadcrumb navigation
         breadcrumb_parts = [ self.m_link("Node", self.PATH_INDEX),
@@ -603,11 +605,9 @@ class NomadNetworkNode():
         if file_path: breadcrumb_parts.insert(3, f"{self.m_escape(file_path)}")
 
         breadcrumb = " / ".join(breadcrumb_parts)
-        content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
+        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
 
-        title_suffix = f" ({file_path})" if file_path else ""
-        content_parts.append(self.m_heading(f"Commit History{title_suffix}", 1))
-        content_parts.append(f"`F666Ref: {ref} ({resolved_ref[:8]})`f\n\n")
+        title_suffix = f" for {file_path}" if file_path else ""
 
         # Get commits
         skip = page_num * self.COMMITS_PER_PAGE
@@ -616,35 +616,33 @@ class NomadNetworkNode():
         if commits is None: content_parts.append("Error reading commit history.\n")
         elif not commits:   content_parts.append("No commits found.\n")
         else:
-            content_parts.append(self.m_heading("Commits", 2))
+            content_parts.append(self.m_heading(f"Commits{title_suffix} {self.CLR_DIM_H}{ref} ({resolved_ref[:8]})`f", 2))
             content_parts.append("\n")
 
             for commit in commits:
                 short_hash = commit["hash"][:7]
                 subject = commit["subject"]
                 author = commit["author"]
-                date = self.format_relative_time(commit["timestamp"])
+                date = self.format_absolute_time(commit["timestamp"])+" - "+self.format_relative_time(commit["timestamp"])
 
                 hash_link = self.m_link(short_hash, self.PATH_COMMIT, g=group_name, r=repo_name, h=commit["hash"])
 
-                content_parts.append(f"`F66d{hash_link}`f {self.m_escape(author)} - {date}\n")
+                content_parts.append(f"`F66d{hash_link}`f {self.m_escape(author)} {self.CLR_DIM}{date}`f\n")
                 content_parts.append(f"{self.m_escape(subject)}\n\n")
 
             # Pagination controls
             has_more = len(commits) == self.COMMITS_PER_PAGE
 
             if page_num > 0 or has_more:
-                content_parts.append(self.m_heading("Navigation", 2))
-                content_parts.append("\n")
-
                 nav_links = []
                 if page_num > 0: nav_links.append(self.m_link("« Newer", self.PATH_COMMITS, g=group_name, r=repo_name, ref=ref, path=file_path, page=page_num - 1))
                 nav_links.append(f"Page {page_num + 1}")
                 if has_more: nav_links.append(self.m_link("Older »", self.PATH_COMMITS, g=group_name, r=repo_name, ref=ref, path=file_path, page=page_num + 1))
-                content_parts.append("  " + " | ".join(nav_links) + "\n")
+                content_parts.append(" | ".join(nav_links) + "\n")
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st=st)
+        nav_content = "".join(nav_parts)
+        return self.render_template(page_content, nav_content=nav_content, st=st)
 
     def serve_commit_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -1183,6 +1181,7 @@ class NomadNetworkNode():
 
                 parts = line.split("|", 4)
                 if len(parts) >= 5:
+                    RNS.log(parts)
                     commits.append({ "hash": parts[0],
                                      "subject": parts[1],
                                      "author": parts[2],
@@ -1313,6 +1312,10 @@ class NomadNetworkNode():
     ###################
 
     def format_size(self, size_bytes): return RNS.prettysize(size_bytes)
+
+    def format_absolute_time(self, timestamp):
+        dt = datetime.fromtimestamp(timestamp)
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
 
     def format_relative_time(self, timestamp):
         now = time.time()
