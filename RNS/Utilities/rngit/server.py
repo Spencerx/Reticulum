@@ -42,6 +42,7 @@ from RNS._version import __version__
 from RNS.Utilities.rngit import APP_NAME
 from RNS.Utilities.rngit.pages import NomadNetworkNode
 from RNS.vendor.configobj import ConfigObj
+from RNS.vendor import umsgpack as mp
 
 def program_setup(configdir, rnsconfigdir=None, verbosity=0, quietness=0, service=False, interactive=False, print_identity=False):
     targetverbosity = verbosity-quietness
@@ -135,11 +136,16 @@ class ReticulumGitNode():
         self.groups              = {}
         self.active_links        = {}
         self.page_servers        = {}
+        self.stats               = {}
         self.last_announce       = 0
         self.announce_interval   = 0
+        self.stats_enabled       = True
+        self.stats_job_interval  = 15 # TODO: Increase significantly
+        self.last_stats_job      = time.time()
         self.link_clean_interval = 5
         self.last_link_clean     = 0
         self.active_links_lock   = Lock()
+        self.stats_lock          = Lock()
         self.node_name           = "Anonymous Git Node"
 
         self.config              = None
@@ -162,6 +168,7 @@ class ReticulumGitNode():
             RNS.logfile = self.configdir+"/server_log"
             self.configpath = self.configdir+"/config"
             self.identitypath = self.configdir+"/repositories_identity"
+            self.statspath = self.configdir+"/stats"
 
             if os.path.isfile(self.configpath):
                 try: self.config = ConfigObj(self.configpath)
@@ -177,6 +184,7 @@ class ReticulumGitNode():
                 exit(1)
 
             self.__apply_config()
+            self.__load_stats()
 
             if print_identity:
                 client_identity_path = self.configdir+"/client_identity"
@@ -210,6 +218,25 @@ class ReticulumGitNode():
 
         if not os.path.isdir(self.configdir): os.makedirs(self.configdir)
         self.config.write()
+
+    def __load_stats(self):
+        with self.stats_lock:
+            self.stats = { "pages": {"front": {}}, "groups": {} }
+            if not os.path.isfile(self.statspath):
+                try:
+                    with open(self.statspath, "wb") as fh: fh.write(mp.packb(self.stats))
+                except Exception as e: RNS.log(f"Could not persist stats to {self.statspath}: {e}", RNS.LOG_ERROR)
+
+            else:
+                try:
+                    with open(self.statspath, "rb") as fh: self.stats = mp.unpackb(fh.read())
+                except Exception as e: RNS.log(f"Could not read stats file {self.statspath}: {e}", RNS.LOG_ERROR)
+
+    def __persist_stats(self):
+        with self.stats_lock:
+            try:
+                with open(self.statspath, "wb") as fh: fh.write(mp.packb(self.stats))
+            except Exception as e: RNS.log(f"Could not write stats file to {self.statspath}: {e}", RNS.LOG_ERROR)
 
     def __apply_config(self):
         if not os.path.isfile(self.identitypath):
@@ -403,7 +430,13 @@ class ReticulumGitNode():
         while self._should_run:
             time.sleep(self.JOBS_INTERVAL)
             try:
-                if self.announce_interval and time.time() > self.last_announce + self.announce_interval: self.announce()
+                if self.announce_interval and time.time() > self.last_announce + self.announce_interval:
+                    self.announce()
+
+                if time.time() > self.last_stats_job + self.stats_job_interval:
+                    self.__persist_stats()
+                    self.last_stats_job = time.time()
+
                 if time.time() > self.last_link_clean + self.link_clean_interval:
                     stale_links = []
                     with self.active_links_lock:
@@ -527,6 +560,9 @@ class ReticulumGitNode():
                 if unique_lines: output = '\n'.join(unique_lines) + f"\n@{head_ref} HEAD\n"
                 else:            output = f"@{head_ref} HEAD\n"
                 
+                if for_push: self.push_succeeded(group_name, repository_name, remote_identity)
+                else:        self.fetch_succeeded(group_name, repository_name, remote_identity)
+
                 return b"\x00" + output.encode("utf-8")
 
             except Exception as e:
@@ -715,6 +751,113 @@ class ReticulumGitNode():
             except Exception as e:
                 RNS.log(f"Error while handling delete request for {group_name}/{repository_name}: {e}", RNS.LOG_ERROR)
                 return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+    def view_succeeded(self, group_name, repository_name, remote_identity):
+        if self.stats_enabled:
+            if   group_name == None and repository_name == None: self.record_page_view("front")
+            elif repository_name == None:                        self.record_group_view(group_name)
+            else:                                                self.record_repository_view(group_name, repository_name)
+
+    def fetch_succeeded(self, group_name, repository_name, remote_identity):
+        if self.stats_enabled:
+            if group_name and repository_name: self.record_fetch(group_name, repository_name)
+
+    def push_succeeded(self, group_name, repository_name, remote_identity):
+        if self.stats_enabled:
+            if group_name and repository_name: self.record_push(group_name, repository_name)
+
+    def _get_day(self):
+        timefmt = "%Y-%m-%d"
+        timestamp = time.localtime(time.time())
+        return time.strftime(timefmt, timestamp)
+
+    def record_page_view(self, page):
+        def job():
+            try:
+                with self.stats_lock:
+                    day = self._get_day()
+                    if not day in self.stats["pages"]["front"]: self.stats["pages"]["front"][day] = 0
+                    self.stats["pages"]["front"][day] += 1
+
+                    RNS.log(self.stats) # TODO: Remove
+
+            except Exception as e: RNS.log(f"Error while recording page view stats: {e}", RNS.LOG_ERROR)
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def record_group_view(self, group_name):
+        def job():
+            try:
+                with self.stats_lock:
+                    day = self._get_day()
+                    if not group_name in self.stats["groups"]: self.stats["groups"][group_name] = {"view": {}, "repositories": {}}
+                    
+                    stats = self.stats["groups"][group_name]["view"]
+                    if not day in stats: stats[day] = 0
+                    stats[day] += 1
+
+                    RNS.log(self.stats) # TODO: Remove
+
+            except Exception as e: RNS.log(f"Error while recording group view stats: {e}", RNS.LOG_ERROR)
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def record_repository_view(self, group_name, repository_name):
+        def job():
+            try:
+                with self.stats_lock:
+                    day = self._get_day()
+                    if not group_name in self.stats["groups"]: self.stats["groups"][group_name] = {"view": {}, "repositories": {}}
+                    repos = self.stats["groups"][group_name]["repositories"]
+                    if not repository_name in repos: repos[repository_name] = {"view": {}, "fetch": {}, "push": {}}
+                    
+                    stats = repos[repository_name]["view"]
+                    if not day in stats: stats[day] = 0
+                    stats[day] += 1
+
+                    RNS.log(self.stats) # TODO: Remove
+
+            except Exception as e: RNS.log(f"Error while recording repository view stats: {e}", RNS.LOG_ERROR)
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def record_fetch(self, group_name, repository_name):
+        def job():
+            try:
+                with self.stats_lock:
+                    day = self._get_day()
+                    if not group_name in self.stats["groups"]: self.stats["groups"][group_name] = {"view": {}, "repositories": {}}
+                    repos = self.stats["groups"][group_name]["repositories"]
+                    if not repository_name in repos: repos[repository_name] = {"view": {}, "fetch": {}, "push": {}}
+
+                    stats = repos[repository_name]["fetch"]
+                    if not day in stats: stats[day] = 0
+                    stats[day] += 1
+
+                    RNS.log(self.stats) # TODO: Remove
+
+            except Exception as e: RNS.log(f"Error while recording fetch stats: {e}", RNS.LOG_ERROR)
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def record_push(self, group_name, repository_name):
+        def job():
+            try:
+                with self.stats_lock:
+                    day = self._get_day()
+                    if not group_name in self.stats["groups"]: self.stats["groups"][group_name] = {"view": {}, "repositories": {}}
+                    repos = self.stats["groups"][group_name]["repositories"]
+                    if not repository_name in repos: repos[repository_name] = {"view": {}, "fetch": {}, "push": {}}
+
+                    stats = repos[repository_name]["push"]
+                    if not day in stats: stats[day] = 0
+                    stats[day] += 1
+
+                    RNS.log(self.stats) # TODO: Remove
+
+            except Exception as e: RNS.log(f"Error while recording push stats: {e}", RNS.LOG_ERROR)
+
+        threading.Thread(target=job, daemon=True).start()
 
 
 __default_rngit_config__ = '''# This is the default rngit config file.

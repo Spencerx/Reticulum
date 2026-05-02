@@ -244,6 +244,7 @@ class NomadNetworkNode():
                 link = self.m_link(f" {self.mdc.BULLET} {group_name}", self.PATH_GROUP, g=group_name)
                 content_parts.append(f"{link} ({repo_count} {repo_word})\n")
 
+        self.owner.view_succeeded(None, None, remote_identity)
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, template="front", st=st)
@@ -285,6 +286,7 @@ class NomadNetworkNode():
                 if description: content_parts.append(f" - {description}\n")
                 else:           content_parts.append("\n")
 
+        self.owner.view_succeeded(group_name, None, remote_identity)
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, template="group", st=st)
@@ -356,6 +358,7 @@ class NomadNetworkNode():
 
         content_parts.append("\n")
 
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         nav_content  = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, st=st)
@@ -494,6 +497,7 @@ class NomadNetworkNode():
 
         if content_parts[-1] == "\n": content_parts[-1] = ""
 
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, st=st)
@@ -583,6 +587,7 @@ class NomadNetworkNode():
                 else:
                     content_parts.append("Error reading file content.\n")
 
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, st=st)
@@ -664,6 +669,7 @@ class NomadNetworkNode():
                 if has_more: nav_links.append(self.m_link("Older »", self.PATH_COMMITS, g=group_name, r=repo_name, ref=ref, path=file_path, page=page_num + 1))
                 content_parts.append(" | ".join(nav_links) + "\n")
 
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, st=st)
@@ -797,6 +803,7 @@ class NomadNetworkNode():
             formatted_diff = self.format_diff(commit_info["diff"])
             content_parts.append(f"{formatted_diff.lstrip()}")
 
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         return self.render_template(page_content, nav_content=nav_content, st=st)
 
@@ -898,6 +905,7 @@ class NomadNetworkNode():
         if (show_heads and not refs_data.get("heads")) and (show_tags and not refs_data.get("tags")):
             content_parts.append("No refs found in this repository.\n")
 
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts).rstrip()+"\n"
         return self.render_template(page_content, nav_content=nav_content, st=st)
 
