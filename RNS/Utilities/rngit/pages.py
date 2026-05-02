@@ -279,6 +279,7 @@ class NomadNetworkNode():
 
         group_name = data.get("var_g", "") if data else ""
         repo_name = data.get("var_r", "") if data else ""
+        ref = data.get("var_ref", "HEAD") if data else "HEAD"
 
         if not group_name or not repo_name:
             content = self.m_heading("Error", 1) + "\nInvalid request.\n"
@@ -298,20 +299,21 @@ class NomadNetworkNode():
             return self.render_template(content, nav_content="".join(nav_parts), st=st)
         
         description = self.get_repository_description(repo["path"])
-        if description: description = f"{description}\n"
+        if description: description = f"{description}\n\n"
         else:           description = ""
 
         content_parts.append(f"{description}")
 
         # Get refs information
         refs = self.get_repository_refs(repo["path"])
+        resolved_ref = self.resolve_ref(repo["path"], ref)
+        commits_count = self.get_commit_count(repo["path"], resolved_ref) if resolved_ref else 0
         branch_count = len(refs.get("heads", [])) if refs else 0
         tag_count = len(refs["tags"]) if refs else 0
         
         sep = self.icon("sep")
-        content_parts.append("\n")
         content_parts.append(f"{self.m_link(self.icon("folder")+" Files", self.PATH_TREE, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
-        content_parts.append(f"{self.m_link(self.icon("commits")+" Commits", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
+        content_parts.append(f"{self.m_link(self.icon("commits")+f" Commits ({commits_count})", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
         content_parts.append(f"{self.m_link(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
         content_parts.append(f"{self.m_link(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")}")
         content_parts.append("\n\n<")
@@ -1165,11 +1167,25 @@ class NomadNetworkNode():
 
         return refs
 
+    def get_commit_count(self, repo_path, ref):
+        try:
+            result = subprocess.run(["git", "rev-list", "--count", ref],
+                                    cwd=repo_path, capture_output=True, text=True,
+                                    timeout=self.GIT_COMMAND_TIMEOUT, check=False)
+            
+            if result.returncode == 0: return int(result.stdout.strip())
+            
+        except subprocess.TimeoutExpired: RNS.log(f"Timeout counting commits for ref '{ref}'", RNS.LOG_WARNING)
+        except Exception as e:            RNS.log(f"Error counting commits: {e}", RNS.LOG_WARNING)
+        
+        return 0
+
     def get_commits(self, repo_path, ref, file_path, skip, limit):
         commits = []
 
         try:
-            cmd = ["git", "log", "--format=%H|%s|%an|%ae|%at", "--skip", str(skip), "-n", str(limit), ref]
+            sep = "|_SEP_|"
+            cmd = ["git", "log", f"--format=%H{sep}%s{sep}%an{sep}%ae{sep}%at", "--skip", str(skip), "-n", str(limit), ref]
             if file_path: cmd.extend(["--", file_path])
 
             result = subprocess.run(cmd, cwd=repo_path, capture_output=True, text=True, timeout=self.GIT_COMMAND_TIMEOUT, check=False)
@@ -1179,7 +1195,7 @@ class NomadNetworkNode():
             for line in result.stdout.strip().split("\n"):
                 if not line.strip(): continue
 
-                parts = line.split("|", 4)
+                parts = line.split(sep, 4)
                 if len(parts) >= 5:
                     RNS.log(parts)
                     commits.append({ "hash": parts[0],
