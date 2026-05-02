@@ -69,6 +69,7 @@ class NomadNetworkNode():
     U_ICON_BRANCH   = "⑃"
     U_ICON_TAG      = "⌆"
     U_ICON_COMMITS  = "🖹"
+    U_ICON_STATS    = "🗠"
 
     NF_ICON_SEP     = "•"
     NF_ICON_FOLDER  = "󰉖"
@@ -76,6 +77,7 @@ class NomadNetworkNode():
     NF_ICON_BRANCH  = "󰘬"
     NF_ICON_TAG     = "󰓼"
     NF_ICON_COMMITS = "󰋚"
+    NF_ICON_STATS   = ""
 
     CLR_FOLDER      = "`Ffe6"
     CLR_FILE        = "`F66d"
@@ -123,6 +125,7 @@ class NomadNetworkNode():
             elif name == "branch":  return self.NF_ICON_BRANCH
             elif name == "commits": return self.NF_ICON_COMMITS
             elif name == "tag":     return self.NF_ICON_TAG
+            elif name == "stats":   return self.NF_ICON_STATS
             else:                   return ""
 
         else:
@@ -132,6 +135,7 @@ class NomadNetworkNode():
             elif name == "branch":  return self.U_ICON_BRANCH
             elif name == "commits": return self.U_ICON_COMMITS
             elif name == "tag":     return self.U_ICON_TAG
+            elif name == "stats":   return self.U_ICON_STATS
             else:                   return ""
 
     def jobs(self):
@@ -337,6 +341,8 @@ class NomadNetworkNode():
         content_parts.append(f"{self.m_link_r(self.icon("commits")+f" Commits ({commits_count})", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")}")
+        if self.owner.resolve_permission(remote_identity, group_name, repo_name, self.owner.PERM_STATS):
+            content_parts.append(f" {sep} {self.m_link_r(self.icon("stats")+f" Stats ({tag_count})", self.PATH_STATS, g=group_name, r=repo_name)}")
         content_parts.append("\n\n<")
 
         # Readme content
