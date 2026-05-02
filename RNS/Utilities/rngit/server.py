@@ -105,10 +105,12 @@ class ReticulumGitNode():
     PERM_WRITE      = 0x02
     PERM_READWRITE  = 0x03
     PERM_CREATE     = 0x04
+    PERM_STATS      = 0x05
     PERM_R_SMPHR    = ["r", "read"]
     PERM_W_SMPHR    = ["w", "write"]
-    PERM_RW_SMPHR   = ["f", "full", "rw", "readwrite"]
+    PERM_RW_SMPHR   = ["rw", "readwrite"]
     PERM_C_SMPHR    = ["c", "create"]
+    PERM_S_SMPHR    = ["s", "stats"]
 
     TGT_NONE        = 0x01
     TGT_ALL         = 0x02
@@ -285,14 +287,16 @@ class ReticulumGitNode():
                         perm, target = self.parse_permission(entry)
                         if not perm or not target: continue
                         else:
-                            read = False; write = False; create = False
-                            if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read  = True
-                            if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write = True
+                            read = False; write = False; create = False; stats = False
+                            if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read   = True
+                            if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write  = True
                             if perm == self.PERM_CREATE:                               create = True
+                            if perm == self.PERM_STATS:                                stats  = True
 
-                            if read  and not  target in self.groups[group_name]["read"]:   self.groups[group_name]["read"].append(target)
-                            if write and not  target in self.groups[group_name]["write"]:  self.groups[group_name]["write"].append(target)
+                            if read   and not target in self.groups[group_name]["read"]:   self.groups[group_name]["read"].append(target)
+                            if write  and not target in self.groups[group_name]["write"]:  self.groups[group_name]["write"].append(target)
                             if create and not target in self.groups[group_name]["create"]: self.groups[group_name]["create"].append(target)
+                            if stats  and not target in self.groups[group_name]["stats"]:  self.groups[group_name]["stats"].append(target)
 
     def parse_permission(self, permission_string):
         comps = permission_string.split(":")
@@ -303,6 +307,7 @@ class ReticulumGitNode():
             elif perm in self.PERM_W_SMPHR:  perm = self.PERM_WRITE
             elif perm in self.PERM_RW_SMPHR: perm = self.PERM_READWRITE
             elif perm in self.PERM_C_SMPHR:  perm = self.PERM_CREATE
+            elif perm in self.PERM_S_SMPHR:  perm = self.PERM_STATS
             else:                            perm = None
 
             if   target in self.TGT_NONE_SMPHR: target = self.TGT_NONE
@@ -344,6 +349,10 @@ class ReticulumGitNode():
                 repository_permissions = self.groups[group_name]["repositories"][repository_name]["create"]
                 group_permissions      = self.groups[group_name]["create"]
 
+            elif permission == self.PERM_STATS:
+                repository_permissions = self.groups[group_name]["repositories"][repository_name]["stats"]
+                group_permissions      = self.groups[group_name]["stats"]
+
             else: return False
 
             if   self.TGT_NONE in repository_permissions: return False
@@ -362,7 +371,7 @@ class ReticulumGitNode():
 
     def load_repository_group(self, group_name, group_path):
         # TODO: Implement group.allowed file
-        if not group_name in self.groups: self.groups[group_name] = { "path": group_path, "repositories": {}, "read": [], "write": [], "create": [] }
+        if not group_name in self.groups: self.groups[group_name] = { "path": group_path, "repositories": {}, "read": [], "write": [], "create": [], "stats": [] }
         if group_name in self.groups and self.groups[group_name]["path"] != group_path:
             RNS.log(f"Repository group path did not match existing entry while loading {group_name}, aborting load", RNS.LOG_ERROR)
             return
@@ -384,6 +393,7 @@ class ReticulumGitNode():
                         read_allowed    = []
                         write_allowed   = []
                         create_allowed  = []
+                        stats_allowed   = []
 
                         if os.path.isfile(allowed_path):
                             if os.access(allowed_path, os.X_OK):
@@ -401,17 +411,20 @@ class ReticulumGitNode():
                                     perm, target = self.parse_permission(perm_input)
                                     if not perm or not target: continue
                                     else:
-                                        read = False; write = False; create = False
+                                        read = False; write = False; create = False; stats = False
                                         if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read   = True
                                         if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write  = True
                                         if perm == self.PERM_CREATE:                               create = True
+                                        if perm == self.PERM_STATS:                                stats  = True
 
                                         if read   and not target in read_allowed:   read_allowed.append(target)
                                         if write  and not target in write_allowed:  write_allowed.append(target)
                                         if create and not target in create_allowed: create_allowed.append(target)
+                                        if stats  and not target in stats_allowed:  stats_allowed.append(target)
 
                         group["repositories"][repository_name] = {"name": repository_name, "group": group_name, "path": path,
-                                                                  "read": read_allowed, "write": write_allowed, "create": create_allowed }
+                                                                  "read": read_allowed, "write": write_allowed,
+                                                                  "create": create_allowed, "stats": stats_allowed }
                         loaded += 1
 
         ms = "y" if loaded == 1 else "ies"
