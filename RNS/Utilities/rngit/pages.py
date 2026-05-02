@@ -790,19 +790,25 @@ class NomadNetworkNode():
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
-            content = self.m_heading("Not Found", 1) + "\n\nThe requested repository does not exist or you do not have access to it.\n"
+            content = self.m_heading("Not Found", 1) + "\n\nThe requested repository was not found.\n"
             return self.render_template(content, st=st)
 
         repo_path = repo["path"]
 
         content_parts = []
+        nav_parts = []
 
         # Breadcrumb navigation
         breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / refs"
-        content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
+        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
 
-        content_parts.append(self.m_heading("Refs", 1))
-        content_parts.append("\n")
+        # Filtering links
+        i_sep = self.icon("sep")
+        filter_links = []
+        filter_links.append(self.m_link("All", self.PATH_REFS, g=group_name, r=repo_name))
+        filter_links.append(self.m_link("Branches only", self.PATH_REFS, g=group_name, r=repo_name, type="heads"))
+        filter_links.append(self.m_link("Tags only", self.PATH_REFS, g=group_name, r=repo_name, type="tags"))
+        content_parts.append(f" {i_sep} ".join(filter_links) + "\n\n")
 
         # Get default branch (HEAD)
         default_branch = None
@@ -838,15 +844,14 @@ class NomadNetworkNode():
                 tree_link = self.m_link("tree", self.PATH_TREE, g=group_name, r=repo_name, ref=branch_name)
                 commits_link = self.m_link("commits", self.PATH_COMMITS, g=group_name, r=repo_name, ref=branch_name)
 
-                content_parts.append(f"  {name_display}{default_marker}\n")
-                content_parts.append(f"     {short_hash}: {self.m_escape(commit_subject)}\n")
-                content_parts.append(f"     [{tree_link}] [{commits_link}]\n\n")
+                content_parts.append(f"{name_display}{default_marker} [{tree_link}] [{commits_link}]\n")
+                content_parts.append(f"{short_hash}: {self.m_escape(commit_subject)}\n\n")
 
         if show_tags and refs_data.get("tags"):
             content_parts.append(self.m_heading(f"Tags ({len(refs_data['tags'])})", 2))
             content_parts.append("\n")
 
-            for ref_info in refs_data["tags"]:
+            for ref_info in reversed(refs_data["tags"]):
                 tag_name = ref_info["name"]
                 short_hash = ref_info["short_hash"]
                 is_annotated = ref_info.get("is_annotated", False)
@@ -860,28 +865,17 @@ class NomadNetworkNode():
                 tree_link = self.m_link("tree", self.PATH_TREE, g=group_name, r=repo_name, ref=tag_name)
                 commits_link = self.m_link("commits", self.PATH_COMMITS, g=group_name, r=repo_name, ref=tag_name)
 
-                content_parts.append(f"  {tag_name}{annotated_marker}\n")
-                if is_annotated and tag_message: content_parts.append(f"     Tag: {self.m_escape(tag_message[:60])}\n")
-                content_parts.append(f"     {short_hash}: {self.m_escape(commit_subject)}\n")
-                content_parts.append(f"     [{tree_link}] [{commits_link}]\n\n")
+                content_parts.append(f"{tag_name}{annotated_marker} {self.CLR_DIM}{short_hash}`f [{tree_link}] [{commits_link}]\n")
+                if is_annotated and tag_message: content_parts.append(f"{self.m_escape(tag_message[:512])}\n\n")
+                else: content_parts.append(f"{self.m_escape(commit_subject)}\n\n")
 
         # No refs found
         if (show_heads and not refs_data.get("heads")) and (show_tags and not refs_data.get("tags")):
             content_parts.append("No refs found in this repository.\n")
 
-        content_parts.append("\n")
-
-        # Filtering links
-        content_parts.append(self.m_heading("Filter", 2))
-        content_parts.append("\n")
-        filter_links = []
-        filter_links.append(self.m_link("All", self.PATH_REFS, g=group_name, r=repo_name))
-        filter_links.append(self.m_link("Branches only", self.PATH_REFS, g=group_name, r=repo_name, type="heads"))
-        filter_links.append(self.m_link("Tags only", self.PATH_REFS, g=group_name, r=repo_name, type="tags"))
-        content_parts.append("  " + " | ".join(filter_links) + "\n")
-
-        page_content = "".join(content_parts)
-        return self.render_template(page_content, st=st)
+        page_content = "".join(content_parts).rstrip()+"\n"
+        nav_content = "".join(nav_parts)
+        return self.render_template(page_content, nav_content=nav_content, st=st)
 
     #######################
     # Git Data Extraction #
