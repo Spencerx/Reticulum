@@ -757,7 +757,7 @@ The ``rngit`` node configuration file is located at ``~/.rngit/config`` (or ``/e
 - Access permissions for groups and individual repositories
 - Announce intervals for network visibility
 
-Access permissions can be configured at the group level in the config file, or per-repository using ``.allowed`` files. Permissions use the format ``permission:target`` where permission is ``r`` (read), ``w`` (write), or ``rw`` (read/write), and target is ``all``, ``none``, or a specific identity hash.
+Access permissions can be configured at the group level in the config file, or per-repository using ``.allowed`` files. Permissions use the format ``permission:target`` where permission is ``r`` (read), ``w`` (write), ``rw`` (read/write), ``c`` (create) or ``s`` (stats) and target is ``all``, ``none``, or a specific identity hash.
 
 Repository-specific ``.allowed`` files can be static text files or executable scripts that output permission rules to stdout. A ``group.allowed`` file in a repository group directory applies to all repositories within that group.
 
