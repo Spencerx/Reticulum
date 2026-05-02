@@ -994,7 +994,7 @@ class NomadNetworkNode():
             content_parts.append("\n")
             content_parts.append(self.render_combined_chart(stats["views"]["daily"], stats["fetches"]["daily"], stats["pushes"]["daily"], stats["timeline_labels"]))
         
-        else: content_parts.append(self.m_italic("\nNo activity recorded for this repository in the selected time period.\n"))
+        else: content_parts.append(self.m_italic("\nNo activity recorded for this repository in the selected time period.\n\n"))
         
         page_content = "".join(content_parts)
         nav_content  = "".join(nav_parts)
