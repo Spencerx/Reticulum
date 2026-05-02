@@ -765,6 +765,12 @@ class ReticulumGitNode():
                 RNS.log(f"Error while handling delete request for {group_name}/{repository_name}: {e}", RNS.LOG_ERROR)
                 return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
 
+    def repository_stats(self, remote_identity, group_name, repository_name, lookback_days=14):
+        if not self.resolve_permission(remote_identity, group_name, repository_name): return None
+        else:
+            # TODO: Collect and compile statistics for display
+            pass
+
     def view_succeeded(self, group_name, repository_name, remote_identity):
         if self.stats_enabled:
             if   group_name == None and repository_name == None: self.record_page_view("front")

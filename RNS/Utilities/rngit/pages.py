@@ -53,6 +53,7 @@ class NomadNetworkNode():
     PATH_COMMITS          = "/page/commits.mu"
     PATH_COMMIT           = "/page/commit.mu"
     PATH_REFS             = "/page/refs.mu"
+    PATH_STATS            = "/page/stats.mu"
 
     BLOB_SIZE_LIMIT       = 256 * 1024
     TREE_ENTRIES_PER_PAGE = 1000
@@ -163,6 +164,7 @@ class NomadNetworkNode():
         self.destination.register_request_handler(self.PATH_COMMITS, response_generator=self.serve_commits_page, allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_COMMIT,  response_generator=self.serve_commit_page,  allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_REFS,    response_generator=self.serve_refs_page,    allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_STATS,   response_generator=self.serve_stats_page,   allow=RNS.Destination.ALLOW_ALL)
 
     def render_template(self, page_content, nav_content=None, template=None, st=None):
         if template and template in self.templates:
@@ -907,6 +909,39 @@ class NomadNetworkNode():
 
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts).rstrip()+"\n"
+        return self.render_template(page_content, nav_content=nav_content, st=st)
+
+    def serve_stats_page(self, path, data, request_id, link_id, remote_identity, requested_at):
+        st = time.time()
+        RNS.log(f"Statistics page request from {remote_identity}", RNS.LOG_DEBUG)
+
+        group_name = data.get("var_g", "") if data else ""
+        repo_name = data.get("var_r", "") if data else ""
+
+        if not group_name or not repo_name:
+            content = self.m_heading("Error", 1) + "\nInvalid request.\n"
+            return self.render_template(content, st=st)
+        
+        content_parts = []
+        nav_parts = []
+        
+        # Breadcrumb navigation
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {repo_name}"
+        nav_parts.append(breadcrumb + "\n")
+
+        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
+        stats_permission = self.resolve_permission(remote_identity, group_name, repo_name, self.owner.PERM_STATS)
+
+        if not repo or not stats_permission:
+            content = self.m_heading("Not Found", 1) + "\nThe requested repository was not found.\n"
+            return self.render_template(content, nav_content="".join(nav_parts), st=st)
+        
+        stats = self.owner.repository_stats(remote_identity, group_name, repository_name, lookback_days=14)
+
+        # TODO: Implement actual statistics output
+        
+        page_content = "".join(content_parts)
+        nav_content  = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, st=st)
 
     #######################
