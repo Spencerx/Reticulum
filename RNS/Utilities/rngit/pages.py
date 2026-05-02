@@ -338,15 +338,14 @@ class NomadNetworkNode():
         # Readme content
         readme_content, readme_is_markdown = self.get_readme_content(repo["path"])
         if readme_content is not None:
-            if not readme_content.lstrip().startswith("#"):
+            if not readme_content.lstrip().startswith("#") and not readme_content.lstrip().startswith(">"):
                 content_parts.append(self.m_divider())
-                content_parts.append("\n")
             
             if readme_is_markdown:
                 converted = self.mdc.format_block(readme_content)
                 content_parts.append(converted)
             
-            else: content_parts.append(f"`=\n{readme_content}\n`=")
+            else: content_parts.append(f"\n{readme_content}\n")
             
             content_parts.append("\n")
             content_parts.append(self.m_divider())
@@ -1327,8 +1326,9 @@ class NomadNetworkNode():
             return None
 
     def get_readme_content(self, repo_path):
-        readme_names = [ ("README.md", True), ("README.rst", False), ("README.txt", False), ("README", False),
-                         ("readme.md", True), ("readme.rst", False), ("readme.txt", False), ("readme", False) ]
+        readme_names = [ ("README.mu", False),  ("Readme.mu", False),  ("readme.mu", False), ("README", False),
+                         ("readme", False),     ("README.md", True),   ("readme.md", True),  ("README.rst", False),
+                         ("README.txt", False), ("readme.rst", False), ("readme.txt", False) ]
         
         for readme_name, is_markdown in readme_names:
             try:
