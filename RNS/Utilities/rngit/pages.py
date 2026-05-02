@@ -341,8 +341,8 @@ class NomadNetworkNode():
         content_parts.append(f"{self.m_link_r(self.icon("commits")+f" Commits ({commits_count})", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")}")
-        if self.owner.resolve_permission(remote_identity, group_name, repo_name, self.owner.PERM_STATS):
-            content_parts.append(f" {sep} {self.m_link_r(self.icon("stats")+f" Stats ({tag_count})", self.PATH_STATS, g=group_name, r=repo_name)}")
+        if self.resolve_permission(remote_identity, group_name, repo_name, self.owner.PERM_STATS):
+            content_parts.append(f" {sep} {self.m_link_r(self.icon("stats")+f" Stats", self.PATH_STATS, g=group_name, r=repo_name)}")
         content_parts.append("\n\n<")
 
         # Readme content
@@ -932,19 +932,69 @@ class NomadNetworkNode():
         nav_parts = []
         
         # Breadcrumb navigation
-        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {repo_name}"
+        repo_link = self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {repo_link}"
         nav_parts.append(breadcrumb + "\n")
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         stats_permission = self.resolve_permission(remote_identity, group_name, repo_name, self.owner.PERM_STATS)
 
         if not repo or not stats_permission:
-            content = self.m_heading("Not Found", 1) + "\nThe requested repository was not found.\n"
+            content = self.m_heading("Error", 2) + "\nThe requested repository was not found.\n"
             return self.render_template(content, nav_content="".join(nav_parts), st=st)
         
-        stats = self.owner.repository_stats(remote_identity, group_name, repository_name, lookback_days=14)
+        stats = self.owner.repository_stats(remote_identity or self.null_ident, group_name, repo_name, lookback_days=90)
 
-        # TODO: Implement actual statistics output
+        if not stats:
+            content = self.m_heading("Stats Unavailable", 2) + "\nCould not retrieve statistics for this repository.\n"
+            return self.render_template(content, nav_content="".join(nav_parts), st=st)
+
+        activity_colors = { "inactive": ("`F666", "No activity"),
+                            "low": ("`F66d", "Low activity"),
+                            "moderate": ("`Faa0", "Moderate activity"),
+                            "high": ("`F0a0", "High activity") }
+
+        act_color, act_label = activity_colors.get(stats["activity_level"], ("`F666", "Unknown"))
+        
+        content_parts.append(self.m_heading(f"Stats for {repo_name}", 2))
+
+        v_total = stats["views"]["total"]
+        v_peak = stats["views"]["peak"]
+        f_total = stats["fetches"]["total"]
+        f_peak = stats["fetches"]["peak"]
+        p_total = stats["pushes"]["total"]
+        p_peak = stats["pushes"]["peak"]
+
+        content_parts.append(f"\n`F66dViews`f    : {v_total:>5}  total {self.CLR_DIM}(peak: {v_peak:>3})`f\n")
+        content_parts.append(f"`F0a0Fetches`f  : {f_total:>5}  total {self.CLR_DIM}(peak: {f_peak:>3})\n`f")
+        content_parts.append(f"`Faa0Pushes`f   : {p_total:>5}  total {self.CLR_DIM}(peak: {p_peak:>3})\n`f")
+        content_parts.append(f"`F0aaActivity`f : {stats['activity_score']:>5} points\n\n")
+        content_parts.append(f"{act_color}{act_label}`f over the last {stats['lookback_days']} days ({stats['date_range']})\n\n")
+        
+        if v_total > 0:
+            content_parts.append(self.m_heading(f"Views", 2))
+            content_parts.append("\n")
+            content_parts.append(self.render_chart(stats["views"]["daily"], stats["timeline_labels"], color="66d"))
+            content_parts.append("\n")
+        
+        if f_total > 0:
+            content_parts.append(self.m_heading(f"Fetches", 2))
+            content_parts.append("\n")
+            content_parts.append(self.render_chart(stats["fetches"]["daily"], stats["timeline_labels"], color="0a0"))
+            content_parts.append("\n")
+        
+        if p_total > 0:
+            content_parts.append(self.m_heading(f"Pushes", 2))
+            content_parts.append("\n")
+            content_parts.append(self.render_chart(stats["pushes"]["daily"], stats["timeline_labels"], color="aa0"))
+            content_parts.append("\n")
+
+        if stats["activity_score"] > 0:
+            content_parts.append(self.m_heading("Combined Activity", 2))
+            content_parts.append("\n")
+            content_parts.append(self.render_combined_chart(stats["views"]["daily"], stats["fetches"]["daily"], stats["pushes"]["daily"], stats["timeline_labels"]))
+        
+        else: content_parts.append(self.m_italic("\nNo activity recorded for this repository in the selected time period.\n"))
         
         page_content = "".join(content_parts)
         nav_content  = "".join(nav_parts)
@@ -1447,6 +1497,102 @@ class NomadNetworkNode():
             else: formatted_lines.append(self.m_escape(line))
         
         return "\n".join(formatted_lines)
+
+    ###################
+    # Stats Renderers #
+    ###################
+
+    def render_chart(self, data, labels, color="666", height=10):
+        if not data or all(d == 0 for d in data): return "No data available\n"        
+        max_val = max(data) if max(data) > 0 else 1
+        num_points = len(data)
+        
+        hsep = ""
+        indent = ""
+        bar_width = 1
+
+        chart_lines = []
+        chart_lines.append(f"{indent}`F{color}Peak: {max_val}`f\n")
+        for row in range(height, 0, -1):
+            threshold = (row - 1) / height * max_val
+            row_line = f"{indent}│"
+            for val in data:
+                if val > threshold:
+                    if row >= height * 0.875:   row_line += f"`F{color}{'█'*bar_width}`f{hsep}"
+                    elif row >= height * 0.625: row_line += f"`F{color}{'▓'*bar_width}`f{hsep}"
+                    elif row >= height * 0.375: row_line += f"`F{color}{'▒'*bar_width}`f{hsep}"
+                    else:                       row_line += f"`F{color}{'░'*bar_width}`f{hsep}"
+                else:                           row_line += f"{' '*bar_width}{hsep}"
+            row_line += "\n"
+            chart_lines.append(row_line)
+        
+        hsj = "┴"*len(hsep)
+        bottom_border = "└" + hsj.join(["─" * bar_width] * num_points) + "┘"
+        chart_lines.append(indent + bottom_border + "\n")
+
+        chart_width = len(bottom_border)
+        first_label = f"{labels[0][:12]:<12}"
+        final_label = f"{labels[-1][:12]:>12}"
+        middle_space = chart_width-len(first_label)-len(final_label)
+
+        label_line = f"{indent}`F666{first_label}`f"
+        label_line += " " * middle_space
+        label_line += f"`F666{final_label}`f\n"
+        chart_lines.append(label_line)
+        
+        return "".join(chart_lines)
+
+    # TODO: This is a weird idea, really. Probably redo it to something else.
+    def render_combined_chart(self, views, fetches, pushes, labels, height=4):
+        if not views or not labels: return "No data available\n"
+        
+        all_data = [v + f + p for v, f, p in zip(views, fetches, pushes)]
+        max_val = max(all_data) if all(all_data) > 0 else 1
+        num_points = len(views)
+        
+        hsep = ""
+        indent = ""
+        bar_width = 1
+
+        lines = []
+        lines.append(f"{indent}`F66d██`f Views  `F0a0██`f Fetches  `Faa0██`f Pushes\n\n")
+        for row in range(height, 0, -1):
+            threshold = (row - 1) / height * max_val
+            row_line = f"{indent}│"
+            for i in range(num_points):
+                v, f, p = views[i], fetches[i], pushes[i]
+                total = v + f + p
+                
+                if total > threshold:
+                    # Determine which "layer" this row represents
+                    # Priority: Pushes > fetches > views for display
+                    if p > 0 and threshold < (v + f + p) and threshold >= (v + f): row_line += f"`Faa0{'█'*bar_width}`f{hsep}"
+                    elif f > 0 and threshold < (v + f) and threshold >= v:         row_line += f"`F0a0{'▓'*bar_width}`f{hsep}"
+                    elif v > 0 and threshold < v:                                  row_line += f"`F66d{'░'*bar_width}`f{hsep}"
+                    else:
+                        # Mixed or partial, show dominant
+                        if p >= f and p >= v: row_line += f"`Faa0{'▒'*bar_width}`f{hsep}"
+                        elif f >= v:          row_line += f"`F0a0{'▒'*bar_width}`f{hsep}"
+                        else:                 row_line += f"`F66d{'▒'*bar_width}`f{hsep}"
+                else:                         row_line += f"{' '*bar_width}{hsep}"
+            row_line += "\n"
+            lines.append(row_line)
+        
+        hsj = "┴"*len(hsep)
+        bottom_border = "└" + hsj.join(["─" * bar_width] * num_points) + "┘"
+        lines.append(indent + bottom_border + "\n")
+
+        chart_width = len(bottom_border)
+        first_label = f"{labels[0][:12]:<12}"
+        final_label = f"{labels[-1][:12]:>12}"
+        middle_space = chart_width-len(first_label)-len(final_label)
+
+        label_line = f"{indent}`F666{first_label}`f"
+        label_line += " " * middle_space
+        label_line += f"`F666{final_label}`f\n"
+        lines.append(label_line)
+        
+        return "".join(lines)
 
     #######################
     # Connection Handlers #
