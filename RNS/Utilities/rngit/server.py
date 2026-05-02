@@ -142,7 +142,7 @@ class ReticulumGitNode():
         self.last_announce       = 0
         self.announce_interval   = 0
         self.stats_enabled       = True
-        self.stats_job_interval  = 15 # TODO: Increase significantly
+        self.stats_job_interval  = 60 # TODO: Increase significantly
         self.last_stats_job      = time.time()
         self.link_clean_interval = 5
         self.last_link_clean     = 0
@@ -766,10 +766,70 @@ class ReticulumGitNode():
                 return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
 
     def repository_stats(self, remote_identity, group_name, repository_name, lookback_days=14):
-        if not self.resolve_permission(remote_identity, group_name, repository_name): return None
+        if not self.resolve_permission(remote_identity, group_name, repository_name, self.PERM_STATS): return None
         else:
-            # TODO: Collect and compile statistics for display
-            pass
+            with self.stats_lock:
+                now = time.time()
+                day_seconds = 86400
+                
+                days = []
+                day_labels = []
+                for i in range(lookback_days - 1, -1, -1):
+                    day_ts = now - (i * day_seconds)
+                    day_str = time.strftime("%Y-%m-%d", time.localtime(day_ts))
+                    days.append(day_str)
+                    day_labels.append(time.strftime("%b %d", time.localtime(day_ts)))
+                
+                timeline_labels = [f"{lookback_days} days ago", "Today"]
+                repo_stats = { "group": group_name, "repository": repository_name,
+                               "lookback_days": lookback_days, "date_range": f"{day_labels[0]} - {day_labels[-1]}",
+                               "days": days, "day_labels": day_labels, "timeline_labels": timeline_labels,
+                               "views": {"daily": [], "total": 0, "peak": 0, "peak_day": None},
+                               "fetches": {"daily": [], "total": 0, "peak": 0, "peak_day": None},
+                               "pushes": {"daily": [], "total": 0, "peak": 0, "peak_day": None} }
+                
+                group_stats = self.stats.get("groups", {}).get(group_name, {})
+                repo_data = group_stats.get("repositories", {}).get(repository_name, {})
+                
+                view_stats = repo_data.get("view", {})
+                for day in days:
+                    count = view_stats.get(day, 0)
+                    repo_stats["views"]["daily"].append(count)
+                    repo_stats["views"]["total"] += count
+                    if count > repo_stats["views"]["peak"]:
+                        repo_stats["views"]["peak"] = count
+                        repo_stats["views"]["peak_day"] = day
+                
+                fetch_stats = repo_data.get("fetch", {})
+                for day in days:
+                    count = fetch_stats.get(day, 0)
+                    repo_stats["fetches"]["daily"].append(count)
+                    repo_stats["fetches"]["total"] += count
+                    if count > repo_stats["fetches"]["peak"]:
+                        repo_stats["fetches"]["peak"] = count
+                        repo_stats["fetches"]["peak_day"] = day
+                
+                push_stats = repo_data.get("push", {})
+                for day in days:
+                    count = push_stats.get(day, 0)
+                    repo_stats["pushes"]["daily"].append(count)
+                    repo_stats["pushes"]["total"] += count
+                    if count > repo_stats["pushes"]["peak"]:
+                        repo_stats["pushes"]["peak"] = count
+                        repo_stats["pushes"]["peak_day"] = day
+                
+                total_score = ( repo_stats["views"]["total"] * 0.25 +
+                                repo_stats["fetches"]["total"] * 2 +
+                                repo_stats["pushes"]["total"] * 4 )
+
+                repo_stats["activity_score"] = int(total_score)
+                
+                if total_score == 0: repo_stats["activity_level"] = "inactive"
+                elif total_score < lookback_days * 2: repo_stats["activity_level"] = "low"
+                elif total_score < lookback_days * 5: repo_stats["activity_level"] = "moderate"
+                else:                                 repo_stats["activity_level"] = "high"
+                
+                return repo_stats
 
     def view_succeeded(self, group_name, repository_name, remote_identity):
         if self.stats_enabled:
@@ -798,8 +858,6 @@ class ReticulumGitNode():
                     if not day in self.stats["pages"]["front"]: self.stats["pages"]["front"][day] = 0
                     self.stats["pages"]["front"][day] += 1
 
-                    RNS.log(self.stats) # TODO: Remove
-
             except Exception as e: RNS.log(f"Error while recording page view stats: {e}", RNS.LOG_ERROR)
 
         threading.Thread(target=job, daemon=True).start()
@@ -814,8 +872,6 @@ class ReticulumGitNode():
                     stats = self.stats["groups"][group_name]["view"]
                     if not day in stats: stats[day] = 0
                     stats[day] += 1
-
-                    RNS.log(self.stats) # TODO: Remove
 
             except Exception as e: RNS.log(f"Error while recording group view stats: {e}", RNS.LOG_ERROR)
 
@@ -834,8 +890,6 @@ class ReticulumGitNode():
                     if not day in stats: stats[day] = 0
                     stats[day] += 1
 
-                    RNS.log(self.stats) # TODO: Remove
-
             except Exception as e: RNS.log(f"Error while recording repository view stats: {e}", RNS.LOG_ERROR)
 
         threading.Thread(target=job, daemon=True).start()
@@ -853,8 +907,6 @@ class ReticulumGitNode():
                     if not day in stats: stats[day] = 0
                     stats[day] += 1
 
-                    RNS.log(self.stats) # TODO: Remove
-
             except Exception as e: RNS.log(f"Error while recording fetch stats: {e}", RNS.LOG_ERROR)
 
         threading.Thread(target=job, daemon=True).start()
@@ -871,8 +923,6 @@ class ReticulumGitNode():
                     stats = repos[repository_name]["push"]
                     if not day in stats: stats[day] = 0
                     stats[day] += 1
-
-                    RNS.log(self.stats) # TODO: Remove
 
             except Exception as e: RNS.log(f"Error while recording push stats: {e}", RNS.LOG_ERROR)
 
@@ -894,6 +944,7 @@ announce_interval = 360
 # in announces.
 
 # node_name = Anonymous Git Node
+
 
 [repositories]
 
@@ -934,12 +985,14 @@ internal = rw:9710b86ba12c42d1d8f30f74fe509286
 # all repositories within this group. The same syntax and
 # functionality applies here.
 
+
 [pages]
 # You can run a nomadnet-compatible page node to serve
 # repository information if required. Access permissions
 # will follow those configured per group and repository.
 
 # serve_nomadnet = no
+
 
 [logging]
 # Valid log levels are 0 through 7:
