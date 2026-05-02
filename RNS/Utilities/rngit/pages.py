@@ -52,7 +52,7 @@ class NomadNetworkNode():
     PATH_REFS             = "/page/refs.mu"
 
     BLOB_SIZE_LIMIT       = 256 * 1024
-    TREE_ENTRIES_PER_PAGE = 100
+    TREE_ENTRIES_PER_PAGE = 1000
     COMMITS_PER_PAGE      = 20
     SHOW_DIFF_BY_DEFAULT  = True
     GIT_COMMAND_TIMEOUT   = 5
@@ -61,15 +61,21 @@ class NomadNetworkNode():
 
     U_ICON_SEP      = "•"
     U_ICON_FOLDER   = "🗀"
+    U_ICON_FILE     = "🗎"
     U_ICON_BRANCH   = "⑃"
     U_ICON_TAG      = "⌆"
     U_ICON_COMMITS  = "🖹"
 
     NF_ICON_SEP     = "•"
     NF_ICON_FOLDER  = "󰉖"
+    NF_ICON_FILE    = ""
     NF_ICON_BRANCH  = "󰘬"
     NF_ICON_TAG     = "󰓼"
     NF_ICON_COMMITS = "󰋚"
+
+    CLR_FOLDER      = "`Ffe6"
+    CLR_FILE        = "`F66d"
+    CLR_DIM         = "`F666"
 
     def __init__(self, owner=None):
         if not owner: raise TypeError(f"Invalid owner {owner} for {self}")
@@ -104,6 +110,7 @@ class NomadNetworkNode():
         if self.use_nerdfonts:
             if   name == "sep":     return self.NF_ICON_SEP
             elif name == "folder":  return self.NF_ICON_FOLDER
+            elif name == "file":    return self.NF_ICON_FILE
             elif name == "branch":  return self.NF_ICON_BRANCH
             elif name == "commits": return self.NF_ICON_COMMITS
             elif name == "tag":     return self.NF_ICON_TAG
@@ -112,6 +119,7 @@ class NomadNetworkNode():
         else:
             if   name == "sep":     return self.U_ICON_SEP
             elif name == "folder":  return self.U_ICON_FOLDER
+            elif name == "file":    return self.U_ICON_FILE
             elif name == "branch":  return self.U_ICON_BRANCH
             elif name == "commits": return self.U_ICON_COMMITS
             elif name == "tag":     return self.U_ICON_TAG
@@ -364,6 +372,7 @@ class NomadNetworkNode():
             return self.render_template(content, st=st)
 
         content_parts = []
+        nav_parts = []
 
         # Breadcrumb navigation
         breadcrumb_parts = [ self.m_link("Node", self.PATH_INDEX),
@@ -382,10 +391,7 @@ class NomadNetworkNode():
         else: breadcrumb_parts.append("") # Could be "root" or something, but a bit confusing
 
         breadcrumb = " / ".join(breadcrumb_parts)
-        content_parts.append(self.m_align(breadcrumb, "left") + "\n\n")
-
-        content_parts.append(self.m_heading(f"Tree: {tree_path or 'root'}", 1))
-        content_parts.append(f"`F666Ref: {ref} ({resolved_ref[:8]})`f\n\n")
+        nav_parts.append(breadcrumb + "\n")
 
         # Get tree entries
         entries = self.get_tree_entries(repo_path, resolved_ref, tree_path)
@@ -393,7 +399,9 @@ class NomadNetworkNode():
         if entries is None: content_parts.append("Error reading directory contents.\n")
         elif not entries:   content_parts.append("Empty directory.\n")
         else:
-            # Sort: Directories first, then files, both alphabetically
+            i_file = self.icon("file")
+            i_folder = self.icon("folder")
+            
             def sort_key(entry):
                 is_dir = entry["type"] in ("tree", "commit") # commit = submodule
                 return (not is_dir, entry["name"].lower())
@@ -406,17 +414,18 @@ class NomadNetworkNode():
             end_idx = start_idx + self.TREE_ENTRIES_PER_PAGE
             page_entries = entries[start_idx:end_idx]
 
-            if total_entries > self.TREE_ENTRIES_PER_PAGE:
-                content_parts.append(f"`F666Showing {start_idx + 1}-{min(end_idx, total_entries)} of {total_entries} entries`f\n\n")
-
-            content_parts.append(self.m_heading("Contents", 2))
+            content_parts.append(self.m_heading(f"Contents: {ref} ({resolved_ref[:8]})", 2))
             content_parts.append("\n")
+
+            if total_entries > self.TREE_ENTRIES_PER_PAGE:
+                content_parts.append(f"{self.CLR_DIM}Showing {start_idx + 1}-{min(end_idx, total_entries)} of {total_entries} entries`f\n\n")
 
             # Parent directory link (if not at root)
             if tree_path:
                 parent_path = "/".join(tree_path.rstrip("/").split("/")[:-1])
-                parent_link = self.m_link("../ (parent directory)", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=parent_path)
-                content_parts.append(f"  {parent_link}\n")
+                ilink = self.m_link(f"{i_folder}", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=parent_path)
+                parent_link = self.m_link(" ../", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=parent_path)
+                content_parts.append(f"{self.CLR_FOLDER}{ilink}`f{parent_link}\n")
 
             for entry in page_entries:
                 entry_name = entry["name"]
@@ -426,32 +435,31 @@ class NomadNetworkNode():
                 # Directory
                 if entry_type == "tree":
                     subpath = tree_path + "/" + entry_name if tree_path else entry_name
-                    link = self.m_link(entry_name + "/", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=subpath)
-                    content_parts.append(f"  `F66d📁`f {link}\n")
+                    ilink = self.m_link(f"{i_folder}", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=subpath)
+                    link  = self.m_link(f" {entry_name}/", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=subpath)
+                    content_parts.append(f"{self.CLR_FOLDER}{ilink}`f{link}\n")
 
                 # Submodule
                 elif entry_type == "commit":
-                    content_parts.append(f"  `F66d⧉`f {entry_name} `F666(submodule)`f\n")
+                    content_parts.append(f"{self.CLR_FOLDER}⧉`f {entry_name} `F666(submodule)`f\n")
 
                 # Symlink
                 elif entry_type == "link":
                     target = entry.get("link_target", "unknown")
-                    content_parts.append(f"  `F66d↳`f {entry_name} `F666→ {self.m_escape(target)}`f\n")
+                    content_parts.append(f"{self.CLR_FILE}↳`f {entry_name} `F666→ {self.m_escape(target)}`f\n")
 
                 # File (blob)
                 else:
                     size_str = self.format_size(entry.get("size", 0))
                     subpath = tree_path + "/" + entry_name if tree_path else entry_name
-                    link = self.m_link(entry_name, self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=subpath)
-                    content_parts.append(f"  `F66d📄`f {link} `F666({size_str})`f\n")
+                    ilink = self.m_link(f"{i_file}", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=subpath)
+                    link  = self.m_link(f" {entry_name}", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=subpath)
+                    content_parts.append(f"{self.CLR_FILE}{ilink}`f{link} `F666({size_str})`f\n")
 
             content_parts.append("\n")
 
             # Pagination controls
             if total_entries > self.TREE_ENTRIES_PER_PAGE:
-                content_parts.append(self.m_heading("Navigation", 2))
-                content_parts.append("\n")
-
                 nav_links = []
                 if page_num > 0:
                     nav_links.append(self.m_link("« Previous", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=tree_path, page=page_num - 1))
@@ -462,12 +470,13 @@ class NomadNetworkNode():
                 if end_idx < total_entries:
                     nav_links.append(self.m_link("Next »", self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=tree_path, page=page_num + 1))
 
-                content_parts.append("  " + " | ".join(nav_links) + "\n")
+                content_parts.append(" | ".join(nav_links) + "\n")
 
         if content_parts[-1] == "\n": content_parts[-1] = ""
 
         page_content = "".join(content_parts)
-        return self.render_template(page_content, st=st)
+        nav_content = "".join(nav_parts)
+        return self.render_template(page_content, nav_content=nav_content, st=st)
 
     def serve_blob_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
