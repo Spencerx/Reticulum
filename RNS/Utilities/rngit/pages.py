@@ -144,9 +144,9 @@ class NomadNetworkNode():
     def get_announce_app_data(self): return self.node_name.encode("utf-8")
     
     def announce(self):
+        RNS.log("Announcing page node destination", RNS.LOG_VERBOSE)
         self.last_announce = time.time()
         self.destination.announce()
-        self.app.message_router.announce_propagation_node()
 
     def resolve_permission(self, remote_identity, group_name, repository_name, permission):
         # Since the nomadnet page protocol doesn't *require* authentication,
