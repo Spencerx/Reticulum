@@ -306,25 +306,6 @@ class NomadNetworkNode():
         content_parts.append(f"{self.m_link(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")}")
         content_parts.append("\n\n<")
 
-        
-        # if refs:
-        #     content_parts.append(self.m_heading("Branches", 2))
-        #     content_parts.append("\n")
-
-        #     # Display first 10 branches
-        #     for ref in refs.get("heads", [])[:10]: content_parts.append(f"  {ref['name']}: {ref['short_hash']}\n")
-        #     if len(refs.get("heads", [])) > 10:    content_parts.append(f"  ... and {len(refs['heads']) - 10} more\n")
-        #     content_parts.append("\n")
-
-        #     if refs.get("tags"):
-        #         content_parts.append(self.m_heading("Tags", 2))
-        #         content_parts.append("\n")
-
-        #         # Display first 10 tags
-        #         for ref in refs["tags"][:10]: content_parts.append(f"  {ref['name']}: {ref['short_hash']}\n")
-        #         if len(refs["tags"]) > 10:    content_parts.append(f"  ... and {len(refs['tags']) - 10} more\n")
-        #         content_parts.append("\n")
-
         # Readme content
         readme_content, readme_is_markdown = self.get_readme_content(repo["path"])
         if readme_content is not None:
