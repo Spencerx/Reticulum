@@ -1053,7 +1053,7 @@ class NomadNetworkNode():
         content_parts.append(f"`F0a0Fetches`f  : {f_total:>5}  total {self.CLR_DIM}(peak: {f_peak:>3})\n`f")
         content_parts.append(f"`Faa0Pushes`f   : {p_total:>5}  total {self.CLR_DIM}(peak: {p_peak:>3})\n`f")
         content_parts.append(f"`F0aaActivity`f : {stats['activity_score']:>5} points\n\n")
-        content_parts.append(f"{act_color}{act_label}`f over the last {stats['lookback_days']} days ({stats['date_range']})\n\n")
+        content_parts.append(f"{act_color}{act_label}`f over the last {stats['actual_days']} days ({stats['date_range']})\n\n")
         
         if v_total > 0:
             content_parts.append(self.m_heading(f"Views", 2))

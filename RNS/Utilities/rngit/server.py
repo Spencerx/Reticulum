@@ -827,17 +827,37 @@ class ReticulumGitNode():
                         repo_stats["pushes"]["peak"] = count
                         repo_stats["pushes"]["peak_day"] = day
                 
-                total_score = ( repo_stats["views"]["total"] * 0.25 +
+                total_score = ( repo_stats["views"]["total"] * 0.2 +
                                 repo_stats["fetches"]["total"] * 2 +
-                                repo_stats["pushes"]["total"] * 4 )
+                                repo_stats["pushes"]["total"] * 5 )
 
                 repo_stats["activity_score"] = int(total_score)
-                
-                if total_score == 0: repo_stats["activity_level"] = "inactive"
-                elif total_score < lookback_days * 2: repo_stats["activity_level"] = "low"
-                elif total_score < lookback_days * 5: repo_stats["activity_level"] = "moderate"
-                else:                                 repo_stats["activity_level"] = "high"
-                
+
+                actual_days = lookback_days
+                all_activity_days = set()
+
+                for stats_dict in (view_stats, fetch_stats, push_stats):
+                    for day, count in stats_dict.items():
+                        if count > 0: all_activity_days.add(day)
+
+                if all_activity_days:
+                    earliest_day = min(all_activity_days)
+                    try:
+                        earliest_ts  = time.mktime(time.strptime(earliest_day, "%Y-%m-%d"))
+                        span_seconds = now - earliest_ts
+                        actual_days  = max(1, int(span_seconds // day_seconds) + 1)
+                    
+                    except (ValueError, TypeError): pass
+
+                if actual_days > lookback_days: actual_days = lookback_days
+                daily_score = total_score / actual_days if actual_days > 0 else 0
+                repo_stats["actual_days"] = actual_days
+
+                if   daily_score == 0: repo_stats["activity_level"] = "inactive"
+                elif daily_score <  3: repo_stats["activity_level"] = "low"
+                elif daily_score < 10: repo_stats["activity_level"] = "moderate"
+                else:                  repo_stats["activity_level"] = "high"
+
                 return repo_stats
 
     def view_succeeded(self, group_name, repository_name, remote_identity):
