@@ -862,7 +862,7 @@ Code blocks in Markdown can include language hints for syntax highlighting:
 
 **Customizing Templates**
 
-The page server uses a template system that allows complete customization of the generated pages. Templates are stored in the ``~/.rngit/templates/`` directory as Micron files (``.mu``).
+The page server uses a template system that allows complete customization of the generated pages. Templates are stored in the ``~/.rngit/templates/`` directory as Micron files.
 
 The following template files are supported:
 

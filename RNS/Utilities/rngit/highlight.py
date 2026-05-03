@@ -38,7 +38,7 @@ class SyntaxHighlighter:
         self.pygments_available = False
         self.pygments = None
         self._lexer_cache = {}
-        self._check_pygments()        
+        self._check_pygments()
         self.theme = theme or self._get_default_theme()
     
     def _get_default_theme(self):

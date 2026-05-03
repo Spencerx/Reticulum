@@ -1,3 +1,23 @@
+### 2026-05-04: RNS 1.2.1
+
+This release adds a nomadnet Git page node to the `rngit` utility.
+
+**Changes**
+- Added nomadnet page node to `rngit`.
+
+**Release Hashes**
+```
+5ccbfc31b528133c4dd06c132034c2151e4eed74bc2dcf40af52385094492c9e rns-1.2.1-py3-none-any.whl
+cda45994a58f18bf25244a1f396c9197240bc012dd85c86bffc2e73dcf0607de rnspure-1.2.1-py3-none-any.whl
+```
+
+**Release Signatures**
+Release artifacts include `rsg` signature files that can be validated against the RNS release signing identity `<bc7291552be7a58f361522990465165c>` using `rnid`:
+
+```sh
+rnid -i bc7291552be7a58f361522990465165c -V rns-1.2.1-py3-none-any.whl.rsg
+```
+
 ### 2026-04-28: RNS 1.2.0
 
 This release brings the ability to use Git natively over Reticulum networks, adds the `rnsh` program as part of the included utilities, and additionally includes several improvements and performance optimizations.
