@@ -313,6 +313,7 @@ class NomadNetworkNode():
         st = time.time()
         RNS.log(f"Group page request from {remote_identity}", RNS.LOG_DEBUG)
 
+        if not data: data = {}
         group_name = data.get("var_g", "") if data else ""
 
         if not group_name:
@@ -355,6 +356,7 @@ class NomadNetworkNode():
         st = time.time()
         RNS.log(f"Repository page request from {remote_identity}", RNS.LOG_DEBUG)
 
+        if not data: data = {}
         group_name = data.get("var_g", "") if data else ""
         repo_name = data.get("var_r", "") if data else ""
         ref = data.get("var_ref", "HEAD") if data else "HEAD"
@@ -433,6 +435,7 @@ class NomadNetworkNode():
         st = time.time()
         RNS.log(f"Tree page request from {remote_identity}", RNS.LOG_DEBUG)
 
+        if not data: data = {}
         group_name = data.get("var_g", "")   if data else ""
         repo_name = data.get("var_r", "")    if data else ""
         ref = data.get("var_ref", "HEAD")    if data else "HEAD"
@@ -688,6 +691,7 @@ class NomadNetworkNode():
         st = time.time()
         RNS.log(f"Commits page request from {remote_identity}", RNS.LOG_DEBUG)
 
+        if not data: data = {}
         group_name = data.get("var_g", "")   if data else ""
         repo_name = data.get("var_r", "")    if data else ""
         ref = data.get("var_ref", "HEAD")    if data else "HEAD"
@@ -770,6 +774,7 @@ class NomadNetworkNode():
         st = time.time()
         RNS.log(f"Commit page request from {remote_identity}", RNS.LOG_DEBUG)
 
+        if not data: data = {}
         group_name = data.get("var_g", "")  if data else ""
         repo_name = data.get("var_r", "")   if data else ""
         commit_hash = data.get("var_h", "") if data else ""
@@ -903,6 +908,7 @@ class NomadNetworkNode():
         st = time.time()
         RNS.log(f"Refs page request from {remote_identity}", RNS.LOG_DEBUG)
 
+        if not data: data = {}
         group_name = data.get("var_g", "") if data else ""
         repo_name = data.get("var_r", "") if data else ""
         ref_type = data.get("var_type", "") if data else ""  # "heads", "tags", or empty for both
@@ -1005,6 +1011,7 @@ class NomadNetworkNode():
         st = time.time()
         RNS.log(f"Statistics page request from {remote_identity}", RNS.LOG_DEBUG)
 
+        if not data: data = {}
         group_name = data.get("var_g", "") if data else ""
         repo_name = data.get("var_r", "") if data else ""
 
