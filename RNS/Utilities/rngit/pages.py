@@ -193,7 +193,7 @@ class NomadNetworkNode():
             if os.access(path, os.X_OK):
                 try:
                     result = subprocess.run([path], stdout=subprocess.PIPE)
-                    template = result.stdout.decode("utf-8")
+                    template = result.stdout.decode("utf-8").rstrip()
                     return template
 
                 except Exception as e:
@@ -202,7 +202,7 @@ class NomadNetworkNode():
 
             else:
                 try:
-                    with open(path, "rb") as fh: return fh.read().decode("utf-8")
+                    with open(path, "rb") as fh: return fh.read().decode("utf-8").rstrip()
 
                 except Exception as e:
                     RNS.log(f"Could not get static template content from {path}: {e}", RNS.LOG_ERROR)
