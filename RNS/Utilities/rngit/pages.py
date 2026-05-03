@@ -34,11 +34,13 @@ import threading
 import subprocess
 import urllib.parse
 import RNS
+from collections import deque
 from datetime import datetime
 from RNS.Utilities.rngit import APP_NAME
 from RNS.Utilities.rngit.util import MarkdownToMicron
 from RNS.Utilities.rngit.highlight import SyntaxHighlighter
 from RNS.vendor.configobj import ConfigObj
+from RNS.vendor import umsgpack as mp
 from RNS._version import __version__
 
 class NomadNetworkNode():
@@ -70,6 +72,7 @@ class NomadNetworkNode():
     U_ICON_TAG      = "⌆"
     U_ICON_COMMITS  = "🖹"
     U_ICON_STATS    = "🗠"
+    U_ICON_HEART    = "♥"
 
     NF_ICON_SEP     = "•"
     NF_ICON_FOLDER  = "󰉖"
@@ -78,6 +81,7 @@ class NomadNetworkNode():
     NF_ICON_TAG     = "󰓼"
     NF_ICON_COMMITS = "󰋚"
     NF_ICON_STATS   = ""
+    NF_ICON_HEART   = "󰋑"
 
     CLR_FOLDER      = "`Ffe6"
     CLR_FILE        = "`F66d"
@@ -115,6 +119,7 @@ class NomadNetworkNode():
         self.highlight_syntax     = True
         self.highlighter          = SyntaxHighlighter()
         self.mdc                  = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH, syntax_highlighter=self.highlighter)
+        self.thanks_deque         = deque(maxlen=256)
 
         if not os.path.isdir(self.templatesdir):
             try: os.makedirs(self.templatesdir)
@@ -141,6 +146,7 @@ class NomadNetworkNode():
             elif name == "commits": return self.NF_ICON_COMMITS
             elif name == "tag":     return self.NF_ICON_TAG
             elif name == "stats":   return self.NF_ICON_STATS
+            elif name == "heart":   return self.NF_ICON_HEART
             else:                   return ""
 
         else:
@@ -151,6 +157,7 @@ class NomadNetworkNode():
             elif name == "commits": return self.U_ICON_COMMITS
             elif name == "tag":     return self.U_ICON_TAG
             elif name == "stats":   return self.U_ICON_STATS
+            elif name == "heart":   return self.U_ICON_HEART
             else:                   return ""
 
     def jobs(self):
@@ -347,6 +354,7 @@ class NomadNetworkNode():
         group_name = data.get("var_g", "") if data else ""
         repo_name = data.get("var_r", "") if data else ""
         ref = data.get("var_ref", "HEAD") if data else "HEAD"
+        thanks = True if data.get("var_thanks", "") else False
 
         if not group_name or not repo_name:
             content = self.m_heading("Error", 1) + "\nInvalid request.\n"
@@ -370,6 +378,8 @@ class NomadNetworkNode():
         if description: description = f"{description}\n\n"
         else:           description = ""
 
+        thanks_count = self.repository_thanks(repo["path"], add=thanks, link_id=link_id)
+
         content_parts.append(f"{description}")
 
         # Get refs information
@@ -383,7 +393,8 @@ class NomadNetworkNode():
         content_parts.append(f"{self.m_link_r(self.icon("folder")+" Files", self.PATH_TREE, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("commits")+f" Commits ({commits_count})", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
-        content_parts.append(f"{self.m_link_r(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")}")
+        content_parts.append(f"{self.m_link_r(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")} {sep} ")
+        content_parts.append(f"{self.m_link_r(self.icon("heart")+f" Thanks ({thanks_count})", self.PATH_REPO, g=group_name, r=repo_name, thanks="y")}")
         if self.resolve_permission(remote_identity, group_name, repo_name, self.owner.PERM_STATS):
             content_parts.append(f" {sep} {self.m_link_r(self.icon("stats")+f" Stats", self.PATH_STATS, g=group_name, r=repo_name)}")
         content_parts.append("\n\n<")
@@ -1566,6 +1577,31 @@ class NomadNetworkNode():
             else: formatted_lines.append(self.m_escape(line))
         
         return "\n".join(formatted_lines)
+
+
+    def repository_thanks(self, repo_path, add=False, link_id=None):
+        if add:
+            if link_id in self.thanks_deque: add = False
+            else:                            self.thanks_deque.append(link_id)
+
+        try:
+            thanks_path = f"{repo_path}.thanks"
+            if not os.path.isfile(thanks_path):
+                thanks_count = 1 if add else 0
+                with open(thanks_path, "wb") as fh: fh.write(mp.packb({"count": thanks_count}))
+
+            else:
+                with open(thanks_path, "rb") as fh:
+                    thanks_data = mp.unpackb(fh.read())
+                    if "count" in thanks_data: thanks_count = thanks_data["count"]
+                    else: raise ValueError("Invalid data in thanks file")
+
+                if add: thanks_count += 1
+                with open(thanks_path, "wb") as fh: fh.write(mp.packb({"count": thanks_count}))
+                return thanks_count
+
+        except Exception as e: RNS.log(f"Error while processing repository thanks for {group_name}/{repo_name}: {e}", RNS.LOG_ERROR)
+        return 0
 
     ###################
     # Stats Renderers #
