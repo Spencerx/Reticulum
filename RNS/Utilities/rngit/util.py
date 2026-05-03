@@ -471,12 +471,12 @@ class MarkdownToMicron:
         
         result.append(self._escape_literals(border))
         
-        # Header row (always left-aligned)
+        # Header row
         header_line = self.TABLE_V
         for i, cell in enumerate(header_cells):
             padded = self._pad_cell(cell, col_widths[i], 'left')
             header_line += f" {padded} {self.TABLE_V}"
-        result.append(self._escape_literals(header_line))
+        result.append(header_line)
         
         # Separator row - clean horizontal lines without alignment markers
         sep_line = self.TABLE_ML
