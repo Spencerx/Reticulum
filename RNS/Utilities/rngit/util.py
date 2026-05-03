@@ -302,7 +302,7 @@ class MarkdownToMicron:
     def _escape_literals(self, text):
         return text.replace('`', '\\`')
 
-    def format_table(self, rows):
+    def format_table(self, rows, align="c"):
         if len(rows) < 2: return rows
         
         # Parse header and separator
@@ -329,7 +329,6 @@ class MarkdownToMicron:
         for row in all_rows:
             for i, cell in enumerate(row):
                 formatted = self._format_inline(cell)
-                # Calculate visible width (excluding Micron tags)
                 width = self._visible_width(formatted)
                 col_widths[i] = max(col_widths[i], width)
         
@@ -355,8 +354,8 @@ class MarkdownToMicron:
         # Build formatted table
         result = []
         
-        # Center alignment start
-        result.append("`c")
+        # Alignment start
+        if align: result.append(f"`{align}")
         
         # Top border
         border = self.TABLE_TL
@@ -379,9 +378,7 @@ class MarkdownToMicron:
         sep_line = self.TABLE_ML
         for i, w in enumerate(col_widths):
             cell_width = w + 2
-            if   alignments[i] == 'center': sep_line += f":{self.TABLE_H * (cell_width - 2)}:"
-            elif alignments[i] == 'right':  sep_line += f"{self.TABLE_H * (cell_width - 1)}:"
-            else:                           sep_line += self.TABLE_H * cell_width
+            sep_line += self.TABLE_H * cell_width
             
             if i < len(col_widths) - 1: sep_line += self.TABLE_MM
             else:                       sep_line += self.TABLE_MR
@@ -407,8 +404,111 @@ class MarkdownToMicron:
         
         result.append(self._escape_literals(border))
         
-        # End center alignment
-        result.append("`a")
+        # End alignment
+        if align: result.append("`a")
+        
+        return result
+
+    def format_table_raw(self, rows, align="c"):
+        if len(rows) < 2: return rows
+        
+        # Parse header and separator
+        header_cells = self._parse_table_row(rows[0])
+        alignments = self._parse_table_alignments(rows[1])
+        
+        # Ensure alignment count matches header cells
+        while len(alignments) < len(header_cells): alignments.append('left')
+        alignments = alignments[:len(header_cells)]
+        
+        # Parse data rows
+        data_rows = []
+        for i in range(2, len(rows)):
+            cells = self._parse_table_row(rows[i])
+            while len(cells) < len(header_cells): cells.append("")
+            cells = cells[:len(header_cells)]
+            data_rows.append(cells)
+        
+        # Calculate column widths based on raw content
+        num_cols = len(header_cells)
+        col_widths = [0] * num_cols
+        
+        all_rows = [header_cells] + data_rows
+        for row in all_rows:
+            for i, cell in enumerate(row):
+                width = self._visible_width(cell)
+                col_widths[i] = max(col_widths[i], width)
+        
+        # Apply minimum width and calculate total
+        col_widths = [max(w, self.TABLE_MIN_COL_WIDTH) for w in col_widths]
+        
+        # Check max_width constraint
+        total_width = sum(col_widths) + (num_cols * 3) + 1
+        
+        if total_width > self.max_width:
+            # Reduce widest columns proportionally
+            excess = total_width - self.max_width
+            indexed_widths = [(i, w) for i, w in enumerate(col_widths)]
+            indexed_widths.sort(key=lambda x: -x[1])
+            
+            for i, w in indexed_widths:
+                if excess <= 0: break
+                reduction = min(excess, w - self.TABLE_MIN_COL_WIDTH)
+                col_widths[i] -= reduction
+                excess -= reduction
+        
+        # Build formatted table
+        result = []
+        
+        # Alignment start
+        if align: result.append(f"`{align}")
+        
+        # Top border
+        border = self.TABLE_TL
+        for i, w in enumerate(col_widths):
+            border += self.TABLE_H * (w + 2)
+            if i < len(col_widths) - 1: border += self.TABLE_TM
+            else:                       border += self.TABLE_TR
+        
+        result.append(self._escape_literals(border))
+        
+        # Header row (always left-aligned)
+        header_line = self.TABLE_V
+        for i, cell in enumerate(header_cells):
+            padded = self._pad_cell(cell, col_widths[i], 'left')
+            header_line += f" {padded} {self.TABLE_V}"
+        result.append(self._escape_literals(header_line))
+        
+        # Separator row - clean horizontal lines without alignment markers
+        sep_line = self.TABLE_ML
+        for i, w in enumerate(col_widths):
+            cell_width = w + 2
+            sep_line += self.TABLE_H * cell_width
+            
+            if i < len(col_widths) - 1: sep_line += self.TABLE_MM
+            else:                       sep_line += self.TABLE_MR
+        
+        result.append(self._escape_literals(sep_line))
+        
+        # Data rows (with alignment)
+        for row in data_rows:
+            row_line = self.TABLE_V
+            for i, cell in enumerate(row):
+                padded = self._pad_cell(cell, col_widths[i], alignments[i])
+                row_line += f" {padded} {self.TABLE_V}"
+            
+            result.append(row_line)
+        
+        # Bottom border
+        border = self.TABLE_BL
+        for i, w in enumerate(col_widths):
+            border += self.TABLE_H * (w + 2)
+            if i < len(col_widths) - 1: border += self.TABLE_BM
+            else:                       border += self.TABLE_BR
+        
+        result.append(self._escape_literals(border))
+        
+        # End alignment
+        if align: result.append("`a")
         
         return result
     
