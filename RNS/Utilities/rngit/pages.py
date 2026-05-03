@@ -84,6 +84,9 @@ class NomadNetworkNode():
     CLR_DIM         = "`F666"
     CLR_DIM_H       = "`F444"
 
+    RENDERABLE_EXTS = [".md", ".mu"]
+    RENDER_DEFAULT  = [".md", ".mu"]
+
     def __init__(self, owner=None):
         if not owner: raise TypeError(f"Invalid owner {owner} for {self}")
 
@@ -408,7 +411,8 @@ class NomadNetworkNode():
         # Breadcrumb navigation
         breadcrumb_parts = [ self.m_link("Node", self.PATH_INDEX),
                              self.m_link(group_name, self.PATH_GROUP, g=group_name),
-                             self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name) ]
+                             self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name),
+                             self.m_link("files", self.PATH_TREE, g=group_name, r=repo_name) ]
 
         # Add path components to breadcrumb
         if tree_path:
@@ -518,7 +522,11 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "")    if data else ""
         ref = data.get("var_ref", "HEAD")    if data else "HEAD"
         file_path = data.get("var_path", "") if data else ""
+        render = data.get("var_render", "")  if data else ""
+        raw = data.get("var_raw", "")        if data else ""
         file_path = urllib.parse.unquote_plus(file_path)
+        render = True if render else False
+        raw = True if raw else False
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
@@ -538,13 +546,21 @@ class NomadNetworkNode():
             content = self.m_heading("Invalid Path", 1) + "\n\nNo file path specified.\n"
             return self.render_template(content, st=st)
 
+        file_ext = os.path.splitext(file_path)[1].lower()
+        renderable = file_ext in self.RENDERABLE_EXTS
+        if not renderable: raw = True; render = False
+        else:
+            if raw: render = False
+            elif not render and file_ext in self.RENDER_DEFAULT: render = True; raw = False
+
         content_parts = []
         nav_parts = []
 
         # Breadcrumb navigation
         breadcrumb_parts = [ self.m_link("Node", self.PATH_INDEX),
                              self.m_link(group_name, self.PATH_GROUP, g=group_name),
-                             self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name) ]
+                             self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name),
+                             self.m_link("files", self.PATH_TREE, g=group_name, r=repo_name) ]
 
         # Add path components
         path_components = file_path.strip("/").split("/")
@@ -556,6 +572,14 @@ class NomadNetworkNode():
 
         breadcrumb = " / ".join(breadcrumb_parts)
         nav_parts.append(breadcrumb + "\n")
+
+        if renderable:
+            sep = self.icon("sep")
+            rnd_link = self.m_link("View rendered", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=file_path, render="y")
+            raw_link = self.m_link("View raw", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=file_path, raw="y")
+            if render: render_controls = f"Displaying Rendered {sep} {raw_link}"
+            else:      render_controls = f"Displaying Raw {sep} {rnd_link}"
+            nav_parts.append(f"\n{render_controls}\n")
 
         # Get blob info
         blob_info = self.get_blob_info(repo_path, resolved_ref, file_path)
@@ -584,16 +608,21 @@ class NomadNetworkNode():
                 content_parts.append(f"This file is {RNS.prettysize(size)}, which exceeds the display limit of {RNS.prettysize(self.BLOB_SIZE_LIMIT)}.\n")
 
             else:
-                # Display file content
                 content = self.get_blob_content(repo_path, resolved_ref, file_path)
                 if content is not None:
-                    if self.highlight_syntax:
-                        highlighted = self.highlighter.highlight(content, file_path)
-                        content_parts.append(highlighted)
+                    if renderable and render:
+                        if   file_ext == ".mu": content_parts.append(f"{content}\n")
+                        elif file_ext == ".md": content_parts.append(f"{self.mdc.format_block(content)}\n")
+                        else                  : content_parts.append(f"`=\n{content}\n`=")
+
                     else:
-                        content_parts.append(f"`=\n{content}\n`=")
-                else:
-                    content_parts.append("Error reading file content.\n")
+                        if self.highlight_syntax:
+                            highlighted = self.highlighter.highlight(content, file_path)
+                            content_parts.append(highlighted)
+                        
+                        else: content_parts.append(f"`=\n{content}\n`=")
+                
+                else: content_parts.append("Error reading file content.\n")
 
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
