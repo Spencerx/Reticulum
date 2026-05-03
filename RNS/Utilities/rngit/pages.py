@@ -1581,8 +1581,9 @@ class NomadNetworkNode():
 
     def repository_thanks(self, repo_path, add=False, link_id=None):
         if add:
-            if link_id in self.thanks_deque: add = False
-            else:                            self.thanks_deque.append(link_id)
+            thanks_hash = RNS.Identity.full_hash(link_id+repo_path.encode("utf-8"))
+            if thanks_hash in self.thanks_deque: add = False
+            else:                                self.thanks_deque.append(thanks_hash)
 
         try:
             thanks_path = f"{repo_path}.thanks"
