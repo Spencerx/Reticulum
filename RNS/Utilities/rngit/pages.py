@@ -125,6 +125,10 @@ class NomadNetworkNode():
             try: os.makedirs(self.templatesdir)
             except Exception as e: RNS.log(f"Could not create templates directory {self.templatesdir}: {e}", RNS.LOG_ERROR)
 
+        if "pages" in self.owner.config:
+            if "unicode_icons" in self.owner.config["pages"]:
+                if self.owner.config["pages"].as_bool("unicode_icons"): self.use_nerdfonts = False
+
         self.destination = RNS.Destination(self.identity, RNS.Destination.IN, RNS.Destination.SINGLE, self.APP_NAME, "node")
         self.destination.set_link_established_callback(self.remote_connected)
         self.destination.set_default_app_data(self.get_announce_app_data)

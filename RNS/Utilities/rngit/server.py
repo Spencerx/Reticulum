@@ -1032,6 +1032,11 @@ internal = rw:9710b86ba12c42d1d8f30f74fe509286
 
 # serve_nomadnet = no
 
+# It is possible to  disable Nerd Font icons and instead
+# use simpler (but more compatible) unicode icons.
+
+# unicode_icons = yes
+
 
 [logging]
 # Valid log levels are 0 through 7:
