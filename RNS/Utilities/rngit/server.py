@@ -141,8 +141,8 @@ class ReticulumGitNode():
         self.stats               = {}
         self.last_announce       = 0
         self.announce_interval   = 0
-        self.stats_enabled       = True
-        self.stats_job_interval  = 60 # TODO: Increase significantly
+        self.stats_enabled       = False
+        self.stats_job_interval  = 180
         self.last_stats_job      = time.time()
         self.link_clean_interval = 5
         self.last_link_clean     = 0
@@ -260,6 +260,7 @@ class ReticulumGitNode():
             section = self.config["rngit"]
             if "node_name" in section: self.node_name = section["node_name"]
             if "announce_interval" in section: self.announce_interval = section.as_int("announce_interval")*60
+            if "record_stats" in section: self.stats_enabled = section.as_bool("record_stats")
 
         if "logging" in self.config:
             section = self.config["logging"]
@@ -945,6 +946,13 @@ announce_interval = 360
 
 # node_name = Anonymous Git Node
 
+# You can enable collecting view, fetch and push statistics
+# which can be displayed on the stats pages of repositories.
+# Remember to set the "s" (stats) permission appropriately
+# for statistics to actually be viewable by anyone.
+
+# record_stats = no
+
 
 [repositories]
 
@@ -954,6 +962,11 @@ announce_interval = 360
 internal = /path/to/directory/with/git/repositories
 public = /another/path/to/directory/with/git/repositories
 showcase = /another/path/to/directory/with/git/repositories
+
+# To add a short description to your repositories, you can
+# either place a "repo_name.description" file in the same
+# directory as the repository folder, or set it in the bare
+# repository with `git config repository.description`.
 
 
 [access]
@@ -990,6 +1003,21 @@ internal = rw:9710b86ba12c42d1d8f30f74fe509286
 # You can run a nomadnet-compatible page node to serve
 # repository information if required. Access permissions
 # will follow those configured per group and repository.
+#
+# The page server supports automatic markdown to micron
+# conversion for repository readmes and other files. If
+# you have the pygments Python module installed, syntax
+# highlighting will also be automatically applied.
+#
+# The page server is highly customizable, and you can
+# provide custom templates for each page type by placing
+# a corresponding "template_name.mu" file in the
+# ~/.rngit/templates directory. The supported template
+# names are "base", "front", "group", "repo", "tree",
+# "blob", "commits", "commit", "refs" and "stats". You
+# should include a {PAGE_CONTENT} variable somewhere in
+# your templates, the rendered page content will be
+# injected into this variable.
 
 # serve_nomadnet = no
 
