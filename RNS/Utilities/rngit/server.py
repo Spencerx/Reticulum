@@ -148,6 +148,7 @@ class ReticulumGitNode():
         self.last_link_clean     = 0
         self.active_links_lock   = Lock()
         self.stats_lock          = Lock()
+        self.stats_ignored       = {}
         self.node_name           = "Anonymous Git Node"
 
         self.config              = None
@@ -261,6 +262,13 @@ class ReticulumGitNode():
             if "node_name" in section: self.node_name = section["node_name"]
             if "announce_interval" in section: self.announce_interval = section.as_int("announce_interval")*60
             if "record_stats" in section: self.stats_enabled = section.as_bool("record_stats")
+            if "stats_ignore_identities" in section:
+                ignored = section.as_list("stats_ignore_identities")
+                for identhexhash in ignored:
+                    if not len(identhexhash) == RNS.Reticulum.TRUNCATED_HASHLENGTH//8*2: continue
+                    else:
+                        try: self.stats_ignored[bytes.fromhex(identhexhash)] = True
+                        except Exception as e: RNS.log(f"Invalid identity hash for stats ignore: {identhexhash}", RNS.LOG_WARNING)
 
         if "logging" in self.config:
             section = self.config["logging"]
@@ -833,16 +841,19 @@ class ReticulumGitNode():
                 return repo_stats
 
     def view_succeeded(self, group_name, repository_name, remote_identity):
+        if remote_identity and remote_identity.hash in self.stats_ignored: return
         if self.stats_enabled:
             if   group_name == None and repository_name == None: self.record_page_view("front")
             elif repository_name == None:                        self.record_group_view(group_name)
             else:                                                self.record_repository_view(group_name, repository_name)
 
     def fetch_succeeded(self, group_name, repository_name, remote_identity):
+        if remote_identity and remote_identity.hash in self.stats_ignored: return
         if self.stats_enabled:
             if group_name and repository_name: self.record_fetch(group_name, repository_name)
 
     def push_succeeded(self, group_name, repository_name, remote_identity):
+        if remote_identity and remote_identity.hash in self.stats_ignored: return
         if self.stats_enabled:
             if group_name and repository_name: self.record_push(group_name, repository_name)
 
@@ -952,7 +963,7 @@ announce_interval = 360
 # for statistics to actually be viewable by anyone.
 
 # record_stats = no
-
+# stats_ignore_identities = 9710b86ba12c42d1d8f30f74fe509286
 
 [repositories]
 
