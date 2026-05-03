@@ -99,14 +99,26 @@ class NomadNetworkNode():
         self.last_announce      = 0
         self.null_ident         = RNS.Identity.from_bytes(bytes(64))
         
-        self.templates          = {}
-        self.templates["base"]  = DEFAULT_BASE_TEMPLATE
-        self.templates["front"] = DEFAULT_FRONT_TEMPLATE
-        self.templates["group"] = DEFAULT_GROUP_TEMPLATE
-        self.use_nerdfonts      = self.USE_NERDFONTS
-        self.highlight_syntax   = True
-        self.highlighter        = SyntaxHighlighter()
-        self.mdc                = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH, syntax_highlighter=self.highlighter)
+        self.templates            = {}
+        self.templates["base"]    = DEFAULT_BASE_TEMPLATE
+        self.templates["front"]   = DEFAULT_FRONT_TEMPLATE
+        self.templates["group"]   = DEFAULT_GROUP_TEMPLATE
+        self.templates["repo"]    = DEFAULT_REPO_TEMPLATE
+        self.templates["tree"]    = DEFAULT_TREE_TEMPLATE
+        self.templates["blob"]    = DEFAULT_BLOB_TEMPLATE
+        self.templates["commits"] = DEFAULT_COMMITS_TEMPLATE
+        self.templates["commit"]  = DEFAULT_COMMIT_TEMPLATE
+        self.templates["refs"]    = DEFAULT_REFS_TEMPLATE
+        self.templates["stats"]   = DEFAULT_STATS_TEMPLATE
+        self.templatesdir         = self.owner.configdir+"/templates"
+        self.use_nerdfonts        = self.USE_NERDFONTS
+        self.highlight_syntax     = True
+        self.highlighter          = SyntaxHighlighter()
+        self.mdc                  = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH, syntax_highlighter=self.highlighter)
+
+        if not os.path.isdir(self.templatesdir):
+            try: os.makedirs(self.templatesdir)
+            except Exception as e: RNS.log(f"Could not create templates directory {self.templatesdir}: {e}", RNS.LOG_ERROR)
 
         self.destination = RNS.Destination(self.identity, RNS.Destination.IN, RNS.Destination.SINGLE, self.APP_NAME, "node")
         self.destination.set_link_established_callback(self.remote_connected)
@@ -173,12 +185,40 @@ class NomadNetworkNode():
         self.destination.register_request_handler(self.PATH_REFS,    response_generator=self.serve_refs_page,    allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_STATS,   response_generator=self.serve_stats_page,   allow=RNS.Destination.ALLOW_ALL)
 
+    def get_template(self, template):
+        filename = f"{template}.mu"
+        path = os.path.join(self.templatesdir, filename)
+        if not os.path.isfile(path): return None
+        else:
+            if os.access(path, os.X_OK):
+                try:
+                    result = subprocess.run([path], stdout=subprocess.PIPE)
+                    template = result.stdout.decode("utf-8")
+                    return template
+
+                except Exception as e:
+                    RNS.log(f"Could not get dynamic template content from {path}: {e}", RNS.LOG_ERROR)
+                    return None
+
+            else:
+                try:
+                    with open(path, "rb") as fh: return fh.read().decode("utf-8")
+
+                except Exception as e:
+                    RNS.log(f"Could not get static template content from {path}: {e}", RNS.LOG_ERROR)
+                    return None
+
     def render_template(self, page_content, nav_content=None, template=None, st=None):
-        if template and template in self.templates:
+        custom_template = self.get_template(template) if template else None
+        if custom_template:
+            template = custom_template
+            page_content = template.replace("{PAGE_CONTENT}", page_content)
+
+        elif template and template in self.templates:
             template = self.templates[template]
             page_content = template.replace("{PAGE_CONTENT}", page_content)
 
-        base_template = self.templates["base"]
+        base_template = self.get_template("base") or self.templates["base"]
         base_template = base_template.replace("{PAGE_CONTENT}", page_content)
         base_template = base_template.replace("{NODE_NAME}", self.node_name)
         base_template = base_template.replace("{VERSION}", __version__)
@@ -240,8 +280,8 @@ class NomadNetworkNode():
 
         accessible_groups = self.get_accessible_groups(remote_identity)
 
-        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} /"
-        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} /"
+        nav_parts.append(breadcrumb + "\n")
 
         if not accessible_groups: content_parts.append("No repository groups available.\n")
         else:
@@ -250,7 +290,7 @@ class NomadNetworkNode():
                 repo_count = len(group.get("repositories", {}))
                 repo_word = "repository" if repo_count == 1 else "repositories"
                 
-                link = self.m_link(f" {self.mdc.BULLET} {group_name}", self.PATH_GROUP, g=group_name)
+                link = self.m_link(f"  {self.mdc.BULLET} {group_name}", self.PATH_GROUP, g=group_name)
                 content_parts.append(f"{link} ({repo_count} {repo_word})\n")
 
         self.owner.view_succeeded(None, None, remote_identity)
@@ -277,8 +317,8 @@ class NomadNetworkNode():
         content_parts = []
         nav_parts     = []
         
-        breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {group_name}"
-        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {group_name}"
+        nav_parts.append(breadcrumb + "\n")
 
         if not accessible_repos: content_parts.append("No repositories available.\n")
         else:
@@ -290,7 +330,7 @@ class NomadNetworkNode():
                 
                 description = self.get_repository_description(repo["path"])
                 
-                link = self.m_link(f" {self.mdc.BULLET} {repo_name}", self.PATH_REPO, g=group_name, r=repo_name)
+                link = self.m_link(f"  {self.mdc.BULLET} {repo_name}", self.PATH_REPO, g=group_name, r=repo_name)
                 content_parts.append(f"{link}")
                 if description: content_parts.append(f" - {description}\n")
                 else:           content_parts.append("\n")
@@ -372,7 +412,7 @@ class NomadNetworkNode():
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         nav_content  = "".join(nav_parts)
-        return self.render_template(page_content, nav_content=nav_content, st=st)
+        return self.render_template(page_content, nav_content=nav_content, template="repo", st=st)
 
     def serve_tree_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -426,7 +466,7 @@ class NomadNetworkNode():
         else: breadcrumb_parts.append("") # Could be "root" or something, but a bit confusing
 
         breadcrumb = " / ".join(breadcrumb_parts)
-        nav_parts.append(breadcrumb + "\n")
+        nav_parts.append(">>\n" + breadcrumb + "\n")
 
         # Get tree entries
         entries = self.get_tree_entries(repo_path, resolved_ref, tree_path)
@@ -512,7 +552,7 @@ class NomadNetworkNode():
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)
-        return self.render_template(page_content, nav_content=nav_content, st=st)
+        return self.render_template(page_content, nav_content=nav_content, template="tree", st=st)
 
     def serve_blob_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -571,7 +611,7 @@ class NomadNetworkNode():
             else: breadcrumb_parts.append(self.m_link(component, self.PATH_TREE, g=group_name, r=repo_name, ref=ref, path=current_path))
 
         breadcrumb = " / ".join(breadcrumb_parts)
-        nav_parts.append(breadcrumb + "\n")
+        nav_parts.append(">>\n" + breadcrumb + "\n")
 
         if renderable:
             sep = self.icon("sep")
@@ -627,7 +667,7 @@ class NomadNetworkNode():
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)
-        return self.render_template(page_content, nav_content=nav_content, st=st)
+        return self.render_template(page_content, nav_content=nav_content, template="blob", st=st)
 
     def serve_commits_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -671,7 +711,7 @@ class NomadNetworkNode():
         if file_path: breadcrumb_parts.insert(3, f"{self.m_escape(file_path)}")
 
         breadcrumb = " / ".join(breadcrumb_parts)
-        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
+        nav_parts.append(">>\n" + breadcrumb + "\n")
 
         title_suffix = f" for {file_path}" if file_path else ""
 
@@ -709,7 +749,7 @@ class NomadNetworkNode():
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         nav_content = "".join(nav_parts)
-        return self.render_template(page_content, nav_content=nav_content, st=st)
+        return self.render_template(page_content, nav_content=nav_content, template="commits", st=st)
 
     def serve_commit_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -744,7 +784,7 @@ class NomadNetworkNode():
         # Breadcrumb navigation
         nav_parts = []
         breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / {resolved_hash[:7]}"
-        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
+        nav_parts.append(">>\n" + breadcrumb + "\n")
         nav_content = "".join(nav_parts)
 
         # Verify it's actually a commit object
@@ -842,7 +882,7 @@ class NomadNetworkNode():
 
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
-        return self.render_template(page_content, nav_content=nav_content, st=st)
+        return self.render_template(page_content, nav_content=nav_content, template="commit", st=st)
 
     def serve_refs_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -857,7 +897,7 @@ class NomadNetworkNode():
 
         # Breadcrumb navigation
         breadcrumb = f"{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / refs"
-        nav_parts.append(self.m_align(breadcrumb, "left") + "\n")
+        nav_parts.append(">>\n" + breadcrumb + "\n")
         nav_content = "".join(nav_parts)
 
         if not group_name or not repo_name:
@@ -944,7 +984,7 @@ class NomadNetworkNode():
 
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts).rstrip()+"\n"
-        return self.render_template(page_content, nav_content=nav_content, st=st)
+        return self.render_template(page_content, nav_content=nav_content, template="refs", st=st)
 
     def serve_stats_page(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -1027,7 +1067,7 @@ class NomadNetworkNode():
         
         page_content = "".join(content_parts)
         nav_content  = "".join(nav_parts)
-        return self.render_template(page_content, nav_content=nav_content, st=st)
+        return self.render_template(page_content, nav_content=nav_content, template="stats", st=st)
 
     #######################
     # Git Data Extraction #
@@ -1696,3 +1736,27 @@ DEFAULT_FRONT_TEMPLATE = """>Groups
 
 # Repositories page template
 DEFAULT_GROUP_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Repository page template
+DEFAULT_REPO_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Tree page template
+DEFAULT_TREE_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Blob page template
+DEFAULT_BLOB_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Commits page template
+DEFAULT_COMMITS_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Commit page template
+DEFAULT_COMMIT_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Refs page template
+DEFAULT_REFS_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Stats page template
+DEFAULT_STATS_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Fallback template
+FALLBACK_TEMPLATE = """{PAGE_CONTENT}"""
