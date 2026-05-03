@@ -548,7 +548,8 @@ class MarkdownToMicron:
     
     def _visible_width(self, text):
         text = re.sub(r'`[FB][0-9a-fA-F]{3}', '', text)
-        text = re.sub(r'`[!*_]', '', text)
+        text = re.sub(r'`[FB]T[0-9a-fA-F]{6}', '', text)
+        text = re.sub(r'`[!*_=]', '', text)
         text = re.sub(r'`f`b', '', text)
         text = re.sub(r'`f', '', text)
         text = re.sub(r'`b', '', text)
