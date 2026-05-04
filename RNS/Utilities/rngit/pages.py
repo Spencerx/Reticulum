@@ -1279,6 +1279,7 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "") if data else ""
         tag = data.get("var_t", "") if data else ""
         artifact = data.get("var_a", "") if data else ""
+        artifact = urllib.parse.unquote_plus(artifact)
         if "/" in artifact: return None
 
         if not group_name or not repo_name or not tag or not artifact: None
