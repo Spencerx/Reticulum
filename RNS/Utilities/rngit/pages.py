@@ -59,6 +59,7 @@ class NomadNetworkNode():
     PATH_RELEASES         = "/page/releases.mu"
     PATH_RELEASE          = "/page/release.mu"
     PATH_ARTIFACT         = "/file/artifact"
+    PATH_DOWNLOAD         = "/file/download"
 
     BLOB_SIZE_LIMIT       = 256 * 1024
     TREE_ENTRIES_PER_PAGE = 1000
@@ -207,6 +208,7 @@ class NomadNetworkNode():
         self.destination.register_request_handler(self.PATH_RELEASES, response_generator=self.serve_releases_page, allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_RELEASE,  response_generator=self.serve_release_page,  allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_ARTIFACT, response_generator=self.serve_artifact,      allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_DOWNLOAD, response_generator=self.serve_download,      allow=RNS.Destination.ALLOW_ALL)
 
     def get_template(self, template):
         filename = f"{template}.mu"
@@ -650,13 +652,15 @@ class NomadNetworkNode():
         breadcrumb = " / ".join(breadcrumb_parts)
         nav_parts.append(">>\n" + breadcrumb + "\n")
 
-        if renderable:
+        dl_link  = self.m_link("Download", self.PATH_DOWNLOAD, g=group_name, r=repo_name, ref=ref, path=file_path)
+        if not renderable: nav_parts.append(f"\n{dl_link}\n")
+        else:
             sep = self.icon("sep")
             rnd_link = self.m_link("View rendered", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=file_path, render="y")
             raw_link = self.m_link("View raw", self.PATH_BLOB, g=group_name, r=repo_name, ref=ref, path=file_path, raw="y")
             if render: render_controls = f"Displaying Rendered {sep} {raw_link}"
             else:      render_controls = f"Displaying Raw {sep} {rnd_link}"
-            nav_parts.append(f"\n{render_controls}\n")
+            nav_parts.append(f"\n{render_controls} {sep} {dl_link}\n")
 
         # Get blob info
         blob_info = self.get_blob_info(repo_path, resolved_ref, file_path)
@@ -1281,7 +1285,7 @@ class NomadNetworkNode():
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
         if not repo:
-            RNS.log(f"Repository not found for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_WARNING)
+            RNS.log(f"Repository not found or no access for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_WARNING)
             return None
 
         releases_path = f"{repo['path']}.releases"
@@ -1320,6 +1324,47 @@ class NomadNetworkNode():
         RNS.log(f"Artifact file resolved for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_DEBUG)
 
         return [open(artifact_path, "rb"), {"name": artifact.encode("utf-8")}]
+
+    def serve_download(self, path, data, request_id, link_id, remote_identity, requested_at):
+        st = time.time()
+        RNS.log(f"File download request from {remote_identity}", RNS.LOG_DEBUG)
+
+        group_name = data.get("var_g", "")   if data else ""
+        repo_name = data.get("var_r", "")    if data else ""
+        ref = data.get("var_ref", "HEAD")    if data else "HEAD"
+        file_path = data.get("var_path", "") if data else ""
+        file_path = urllib.parse.unquote_plus(file_path)
+        file_name = os.path.basename(file_path)
+
+        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
+        if not repo:
+            RNS.log(f"Repository not found or no access for download request {group_name}/{repo_name}/{ref}/{file_path}", RNS.LOG_WARNING)
+            return None
+
+        repo_path = repo["path"]
+
+        resolved_ref = self.resolve_ref(repo_path, ref)
+        if not resolved_ref:
+            RNS.log(f"Ref not found for download request {group_name}/{repo_name}/{ref}/{file_path}", RNS.LOG_WARNING)
+            return None
+
+        if not file_path:
+            RNS.log(f"No file path for download request {group_name}/{repo_name}/{ref}/{file_path}", RNS.LOG_WARNING)
+            return None
+
+        blob_info = self.get_blob_info(repo_path, resolved_ref, file_path)
+        if blob_info is None:
+            RNS.log(f"File not found at ref for download request {group_name}/{repo_name}/{ref}/{file_path}", RNS.LOG_WARNING)
+            return None
+        
+        else:
+            stream = self.get_blob_stream(repo_path, resolved_ref, file_path)
+            if stream is not None: return [stream, {"name": file_name.encode("utf-8")}]
+            else:
+                RNS.log(f"Could not resolve blob stream for download request {group_name}/{repo_name}/{ref}/{file_path}", RNS.LOG_WARNING)
+                return None
+
+        return None
 
     #######################
     # Git Data Extraction #
@@ -1546,6 +1591,19 @@ class NomadNetworkNode():
         except subprocess.TimeoutExpired: RNS.log(f"Timeout getting blob content", RNS.LOG_WARNING)
         except Exception as e:            RNS.log(f"Error getting blob content: {e}", RNS.LOG_WARNING)
 
+        return None
+
+    def get_blob_stream(self, repo_path, ref, path):
+        file_path = path.strip("/")
+        
+        try:
+            proc = subprocess.Popen(["git", "show", f"{ref}:{file_path}"],
+                                    cwd=repo_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return proc.stdout
+            
+        except subprocess.TimeoutExpired: RNS.log(f"Timeout getting blob content handle", RNS.LOG_WARNING)
+        except Exception as e:            RNS.log(f"Error getting blob content handle: {e}", RNS.LOG_WARNING)
+        
         return None
 
     def get_refs_info(self, repo_path, default_branch=None):
