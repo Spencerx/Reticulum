@@ -1,3 +1,25 @@
+### 2026-05-05: RNS 1.2.2
+
+This release adds release management workflows to the `rngit` utility. Downloading files and release artifacts from `rngit` will require the latest version of Nomad Network. Other nomadnet clients *may* have to update their file download link handling, if they don't already support passing query parameters for file download links.
+
+**Changes**
+- Added release management to `rngit`.
+- Added release pages to the page node of `rngit`.
+- Added file downloads in the tree browser of `rngit`.
+
+**Release Hashes**
+```
+019da0712527627e534403b354b006ca0122441cd916171aeb1113fc492d584a rns-1.2.2-py3-none-any.whl
+fd413a9701916a91d9faea8f20d4078bc1bdfdc14521b0b458742849c8a74a12 rnspure-1.2.2-py3-none-any.whl
+```
+
+**Release Signatures**
+Release artifacts include `rsg` signature files that can be validated against the RNS release signing identity `<bc7291552be7a58f361522990465165c>` using `rnid`:
+
+```sh
+rnid -i bc7291552be7a58f361522990465165c -V rns-1.2.2-py3-none-any.whl.rsg
+```
+
 ### 2026-05-04: RNS 1.2.1
 
 This release adds a nomadnet Git page node to the `rngit` utility.
