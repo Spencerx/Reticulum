@@ -58,6 +58,7 @@ class NomadNetworkNode():
     PATH_STATS            = "/page/stats.mu"
     PATH_RELEASES         = "/page/releases.mu"
     PATH_RELEASE          = "/page/release.mu"
+    PATH_ARTIFACT         = "/file/artifact"
 
     BLOB_SIZE_LIMIT       = 256 * 1024
     TREE_ENTRIES_PER_PAGE = 1000
@@ -205,6 +206,7 @@ class NomadNetworkNode():
         self.destination.register_request_handler(self.PATH_STATS,    response_generator=self.serve_stats_page,    allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_RELEASES, response_generator=self.serve_releases_page, allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_RELEASE,  response_generator=self.serve_release_page,  allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_ARTIFACT, response_generator=self.serve_artifact,      allow=RNS.Destination.ALLOW_ALL)
 
     def get_template(self, template):
         filename = f"{template}.mu"
@@ -1234,7 +1236,13 @@ class NomadNetworkNode():
                 name = art.get("name", "unknown")
                 size = art.get("size", 0)
                 size_str = RNS.prettysize(size) if size else "0 B"
-                content_parts.append(f"{self.icon('file')} {self.m_escape(name)} {self.CLR_DIM}({size_str})`f\n")
+                # content_parts.append(f"{self.icon('file')} {self.m_escape(name)} {self.CLR_DIM}({size_str})`f\n")
+
+                lstr_1 = f"{self.icon('file')} {self.m_escape(name)}"
+                lstr_2 = f"({size_str})"
+                link_1  = self.m_link_r(lstr_1, self.PATH_ARTIFACT, g=group_name, r=repo_name, t=tag, a=name)
+                link_2  = self.m_link_r(lstr_2, self.PATH_ARTIFACT, g=group_name, r=repo_name, t=tag, a=name)
+                content_parts.append(f"{link_1}{self.CLR_DIM}{link_2}`f\n")
             content_parts.append("\n")
 
         else:
@@ -1248,6 +1256,54 @@ class NomadNetworkNode():
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         return self.render_template(page_content, nav_content=nav_content, template="release", st=st)
+
+    def serve_artifact(self, path, data, request_id, link_id, remote_identity, requested_at):
+        st = time.time()
+        RNS.log(f"Artifact file request from {remote_identity}", RNS.LOG_DEBUG)
+
+        if not data: data = {}
+        group_name = data.get("var_g", "") if data else ""
+        repo_name = data.get("var_r", "") if data else ""
+        tag = data.get("var_t", "") if data else ""
+        artifact = data.get("var_a", "") if data else ""
+        if "/" in artifact: return None
+
+        if not group_name or not repo_name or not tag or not artifact: None
+
+        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
+        if not repo:
+            RNS.log(f"Repository not found for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_WARNING)
+            return None
+
+        releases_path = f"{repo['path']}.releases"
+        release_dir = os.path.join(releases_path, tag)
+        artifacts_dir = os.path.join(release_dir, "artifacts")
+        artifact_path = os.path.join(artifacts_dir, artifact)
+        
+        release_info = self.owner.release_data(release_dir, tag)
+        if not release_info:
+            RNS.log(f"Could not resolve release info for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_WARNING)
+            return None
+
+        if release_info.get("status") != "published":
+            RNS.log(f"Attempt to fetch unpublished artifact {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_WARNING)
+            return None
+
+        if not os.path.isdir(release_dir):
+            RNS.log(f"Release directory not found for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_WARNING)
+            return None
+        
+        if not os.path.isdir(artifacts_dir):
+            RNS.log(f"Artifacts directory not found for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_WARNING)
+            return None
+
+        if not os.path.isfile(artifact_path):
+            RNS.log(f"Artifacts file not found for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_WARNING)
+            return None
+
+        RNS.log(f"Artifact file resolved for artifact request {group_name}/{repo_name}/{tag}/{artifact}", RNS.LOG_DEBUG)
+
+        return [open(artifact_path, "rb"), {"name": artifact.encode("utf-8")}]
 
     #######################
     # Git Data Extraction #
