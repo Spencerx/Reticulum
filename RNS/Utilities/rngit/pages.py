@@ -1186,6 +1186,16 @@ class NomadNetworkNode():
             content = self.m_heading("Error", 2) + "\nThe requested repository was not found.\n"
             return self.render_template(content, st=st)
 
+        releases_path = f"{repo['path']}.releases"
+        if tag == "latest":
+            releases = self.owner.releases_list_data(releases_path)
+            if not releases:
+                content = self.m_heading("Release Not Found", 2) + f"\nNo latest release exist.\n"
+                return self.render_template(content, nav_content=nav_content, st=st)
+
+            recent_releases = sorted(releases, key=lambda x: x['created'], reverse=True)
+            tag = recent_releases[0]["tag"]
+
         content_parts = []
         nav_parts = []
 
@@ -1194,7 +1204,6 @@ class NomadNetworkNode():
         nav_parts.append(breadcrumb + "\n")
         nav_content = "".join(nav_parts)
 
-        releases_path = f"{repo['path']}.releases"
         release_dir = os.path.join(releases_path, tag)
         
         if not os.path.isdir(release_dir):
@@ -1276,6 +1285,13 @@ class NomadNetworkNode():
             return None
 
         releases_path = f"{repo['path']}.releases"
+
+        if tag == "latest":
+            releases = self.owner.releases_list_data(releases_path)
+            if not releases: return None
+            recent_releases = sorted(releases, key=lambda x: x['created'], reverse=True)
+            tag = recent_releases[0]["tag"]
+
         release_dir = os.path.join(releases_path, tag)
         artifacts_dir = os.path.join(release_dir, "artifacts")
         artifact_path = os.path.join(artifacts_dir, artifact)
