@@ -174,6 +174,14 @@ class ReticulumGitClient():
         self.request_response    = None
         self.response_metadata   = None
 
+        self.response_progress      = 0
+        self.previous_progress      = 0
+        self.response_size          = None
+        self.response_transfer_size = None
+        self.progress_updated_at    = None
+        self.progress_enabled       = True
+        self.transfer_label         = "unknown"
+
         if not ReticulumGitNode._ensure_git(): RNS.log("The \"git\" command is not available. Aborting server startup.", RNS.LOG_ERROR)
         else:
             if configdir != None: self.configdir = configdir
@@ -248,6 +256,36 @@ class ReticulumGitClient():
         self.request_response = None
         self.request_event.set()
 
+    def _on_progress(self, transfer_instance):
+        if hasattr(transfer_instance, "progress"):
+            self.response_progress      = transfer_instance.progress
+            self.response_size          = transfer_instance.response_size
+            self.response_transfer_size = transfer_instance.response_transfer_size
+        
+        elif hasattr(transfer_instance, "get_progress") and callable(transfer_instance.get_progress):
+            self.response_progress      = transfer_instance.get_progress()
+            self.response_size          = transfer_instance.total_size
+            self.response_transfer_size = transfer_instance.size
+        
+        now = time.time()
+        if self.progress_updated_at == None: self.progress_updated_at = now
+
+        if now > self.progress_updated_at+0.5:
+            td = now - self.progress_updated_at
+            pd = self.response_progress - self.previous_progress
+            bd = pd*self.response_size if self.response_size else 0
+            self.response_speed = (bd/td)*8 if td > 0 else 0
+            self.previous_progress = self.response_progress
+            self.progress_updated_at = now
+            
+            # Report progress to git via stderr
+            if self.progress_enabled and self.response_size:
+                percent = round(self.response_progress * 100, 1)
+                size = self.response_size
+                rxd = size*self.response_progress
+                speed_kbps = (self.response_speed / 1000) if hasattr(self, 'response_speed') else 0
+                print(f"  Transferring {self.transfer_label}: {percent}% ({RNS.prettysize(rxd)}/{RNS.prettysize(size)}) {RNS.prettyspeed(self.response_speed)}          \r", end="")
+
     def send_request(self, path, data, timeout=120):
         if not self.link_ready: self.abort("Link not ready at request time")
         
@@ -257,6 +295,7 @@ class ReticulumGitClient():
         
         RNS.log(f"Sending request: {path}", RNS.LOG_DEBUG)
         request_receipt = self.link.request(path, data, response_callback=self._response_ready, failed_callback=self._response_failed, timeout=timeout)
+        if request_receipt.resource: request_receipt.resource.progress_callback(self._on_progress)
         self.request_event.wait(timeout=timeout)
         
         if self.request_response is None: self.abort("Request failed or timed out")
@@ -471,6 +510,9 @@ class ReticulumGitClient():
             print(f"\nSending {len(artifacts)} artifact{ms}...")
             
             for artifact in artifacts:
+                self.previous_progress = 0
+                self.progress_updated_at = None
+                self.transfer_label = str(artifact)
                 artifact_path = os.path.join(artifacts_path, artifact)
                 with open(artifact_path, "rb") as f: artifact_data = f.read()
                 
@@ -485,7 +527,7 @@ class ReticulumGitClient():
                     error_msg = response[1:].decode("utf-8", errors="ignore") if response else "Unknown error"
                     print(f"  Failed to send {artifact}: {error_msg}")
                 
-                else: print(f"  {artifact} ({RNS.prettysize(len(artifact_data))}) transferred")
+                else: print(f"  {artifact} ({RNS.prettysize(len(artifact_data))}) transferred"+" "*33)
 
             # Step 3: Finalize release
             print("\nFinalizing release...")

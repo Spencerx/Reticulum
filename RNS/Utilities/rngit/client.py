@@ -122,7 +122,6 @@ class ReticulumGitClient():
         self.ref_batch_size      = self.REF_BATCH_SIZE
         self.remote_refs         = {}
 
-        # Response progress tracking
         self.response_progress      = 0
         self.previous_progress      = 0
         self.response_size          = None
@@ -252,7 +251,7 @@ class ReticulumGitClient():
                 percent = round(self.response_progress * 100, 1)
                 size = self.response_size
                 rxd = size*self.response_progress
-                speed_kbps = (self.response_speed / 1024) if hasattr(self, 'response_speed') else 0
+                speed_kbps = (self.response_speed / 1000) if hasattr(self, 'response_speed') else 0
                 sys.stderr.write(f"Transferring: {percent}% ({RNS.prettysize(rxd)}/{RNS.prettysize(size)}) {RNS.prettyspeed(self.response_speed)}          \r")
                 sys.stderr.flush()
 
