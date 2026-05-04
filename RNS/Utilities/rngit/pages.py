@@ -1242,7 +1242,7 @@ class NomadNetworkNode():
                 lstr_2 = f"({size_str})"
                 link_1  = self.m_link_r(lstr_1, self.PATH_ARTIFACT, g=group_name, r=repo_name, t=tag, a=name)
                 link_2  = self.m_link_r(lstr_2, self.PATH_ARTIFACT, g=group_name, r=repo_name, t=tag, a=name)
-                content_parts.append(f"{link_1}{self.CLR_DIM}{link_2}`f\n")
+                content_parts.append(f"{link_1} {self.CLR_DIM}{link_2}`f\n")
             content_parts.append("\n")
 
         else:
