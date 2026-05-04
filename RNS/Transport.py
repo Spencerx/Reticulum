@@ -2222,24 +2222,27 @@ class Transport:
 
     @staticmethod
     def synthesize_tunnel(interface):
-        interface_hash = interface.get_hash()
-        public_key     = RNS.Transport.identity.get_public_key()
-        random_hash    = RNS.Identity.get_random_hash()
-        
-        tunnel_id_data = public_key+interface_hash
-        tunnel_id      = RNS.Identity.full_hash(tunnel_id_data)
+        try:
+            interface_hash = interface.get_hash()
+            public_key     = RNS.Transport.identity.get_public_key()
+            random_hash    = RNS.Identity.get_random_hash()
+            
+            tunnel_id_data = public_key+interface_hash
+            tunnel_id      = RNS.Identity.full_hash(tunnel_id_data)
 
-        signed_data    = tunnel_id_data+random_hash
-        signature      = Transport.identity.sign(signed_data)
-        
-        data           = signed_data+signature
+            signed_data    = tunnel_id_data+random_hash
+            signature      = Transport.identity.sign(signed_data)
+            
+            data           = signed_data+signature
 
-        tnl_snth_dst   = RNS.Destination(None, RNS.Destination.OUT, RNS.Destination.PLAIN, Transport.APP_NAME, "tunnel", "synthesize")
+            tnl_snth_dst   = RNS.Destination(None, RNS.Destination.OUT, RNS.Destination.PLAIN, Transport.APP_NAME, "tunnel", "synthesize")
 
-        packet = RNS.Packet(tnl_snth_dst, data, packet_type = RNS.Packet.DATA, transport_type = RNS.Transport.BROADCAST, header_type = RNS.Packet.HEADER_1, attached_interface = interface)
-        packet.send()
+            packet = RNS.Packet(tnl_snth_dst, data, packet_type = RNS.Packet.DATA, transport_type = RNS.Transport.BROADCAST, header_type = RNS.Packet.HEADER_1, attached_interface = interface)
+            packet.send()
 
-        interface.wants_tunnel = False
+            interface.wants_tunnel = False
+
+        except Exception as e: RNS.log(f"Could not synthesize tunnel for {interface}: {e}", RNS.LOG_ERROR)
 
     @staticmethod
     def tunnel_synthesize_handler(data, packet):
