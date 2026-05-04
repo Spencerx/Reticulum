@@ -56,6 +56,8 @@ class NomadNetworkNode():
     PATH_COMMIT           = "/page/commit.mu"
     PATH_REFS             = "/page/refs.mu"
     PATH_STATS            = "/page/stats.mu"
+    PATH_RELEASES         = "/page/releases.mu"
+    PATH_RELEASE          = "/page/release.mu"
 
     BLOB_SIZE_LIMIT       = 256 * 1024
     TREE_ENTRIES_PER_PAGE = 1000
@@ -73,6 +75,7 @@ class NomadNetworkNode():
     U_ICON_COMMITS  = "🖹"
     U_ICON_STATS    = "🗠"
     U_ICON_HEART    = "♥"
+    U_ICON_PACKAGE  = "◇"
 
     NF_ICON_SEP     = "•"
     NF_ICON_FOLDER  = "󰉖"
@@ -82,6 +85,7 @@ class NomadNetworkNode():
     NF_ICON_COMMITS = "󰋚"
     NF_ICON_STATS   = ""
     NF_ICON_HEART   = "󰋑"
+    NF_ICON_PACKAGE = "󰏗"
 
     CLR_FOLDER      = "`Ffe6"
     CLR_FILE        = "`F66d"
@@ -94,32 +98,34 @@ class NomadNetworkNode():
     def __init__(self, owner=None):
         if not owner: raise TypeError(f"Invalid owner {owner} for {self}")
 
-        self._ready             = False
-        self._should_run        = False
-        self.owner              = owner
-        self.identity           = owner.identity
-        self.node_name          = owner.node_name
-        self.announce_interval  = owner.announce_interval
-        self.last_announce      = 0
-        self.null_ident         = RNS.Identity.from_bytes(bytes(64))
+        self._ready                = False
+        self._should_run           = False
+        self.owner                 = owner
+        self.identity              = owner.identity
+        self.node_name             = owner.node_name
+        self.announce_interval     = owner.announce_interval
+        self.last_announce         = 0
+        self.null_ident            = RNS.Identity.from_bytes(bytes(64))
         
-        self.templates            = {}
-        self.templates["base"]    = DEFAULT_BASE_TEMPLATE
-        self.templates["front"]   = DEFAULT_FRONT_TEMPLATE
-        self.templates["group"]   = DEFAULT_GROUP_TEMPLATE
-        self.templates["repo"]    = DEFAULT_REPO_TEMPLATE
-        self.templates["tree"]    = DEFAULT_TREE_TEMPLATE
-        self.templates["blob"]    = DEFAULT_BLOB_TEMPLATE
-        self.templates["commits"] = DEFAULT_COMMITS_TEMPLATE
-        self.templates["commit"]  = DEFAULT_COMMIT_TEMPLATE
-        self.templates["refs"]    = DEFAULT_REFS_TEMPLATE
-        self.templates["stats"]   = DEFAULT_STATS_TEMPLATE
-        self.templatesdir         = self.owner.configdir+"/templates"
-        self.use_nerdfonts        = self.USE_NERDFONTS
-        self.highlight_syntax     = True
-        self.highlighter          = SyntaxHighlighter()
-        self.mdc                  = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH, syntax_highlighter=self.highlighter)
-        self.thanks_deque         = deque(maxlen=256)
+        self.templates             = {}
+        self.templates["base"]     = DEFAULT_BASE_TEMPLATE
+        self.templates["front"]    = DEFAULT_FRONT_TEMPLATE
+        self.templates["group"]    = DEFAULT_GROUP_TEMPLATE
+        self.templates["repo"]     = DEFAULT_REPO_TEMPLATE
+        self.templates["releases"] = DEFAULT_RELEASES_TEMPLATE
+        self.templates["release"]  = DEFAULT_RELEASE_TEMPLATE
+        self.templates["tree"]     = DEFAULT_TREE_TEMPLATE
+        self.templates["blob"]     = DEFAULT_BLOB_TEMPLATE
+        self.templates["commits"]  = DEFAULT_COMMITS_TEMPLATE
+        self.templates["commit"]   = DEFAULT_COMMIT_TEMPLATE
+        self.templates["refs"]     = DEFAULT_REFS_TEMPLATE
+        self.templates["stats"]    = DEFAULT_STATS_TEMPLATE
+        self.templatesdir          = self.owner.configdir+"/templates"
+        self.use_nerdfonts         = self.USE_NERDFONTS
+        self.highlight_syntax      = True
+        self.highlighter           = SyntaxHighlighter()
+        self.mdc                   = MarkdownToMicron(max_width=self.MAX_RENDER_WIDTH, syntax_highlighter=self.highlighter)
+        self.thanks_deque          = deque(maxlen=256)
 
         if not os.path.isdir(self.templatesdir):
             try: os.makedirs(self.templatesdir)
@@ -151,6 +157,7 @@ class NomadNetworkNode():
             elif name == "tag":     return self.NF_ICON_TAG
             elif name == "stats":   return self.NF_ICON_STATS
             elif name == "heart":   return self.NF_ICON_HEART
+            elif name == "package": return self.NF_ICON_PACKAGE
             else:                   return ""
 
         else:
@@ -162,6 +169,7 @@ class NomadNetworkNode():
             elif name == "tag":     return self.U_ICON_TAG
             elif name == "stats":   return self.U_ICON_STATS
             elif name == "heart":   return self.U_ICON_HEART
+            elif name == "package": return self.U_ICON_PACKAGE
             else:                   return ""
 
     def jobs(self):
@@ -186,15 +194,17 @@ class NomadNetworkNode():
         return self.owner.resolve_permission(remote_identity, group_name, repository_name, permission)
 
     def register_request_handlers(self):
-        self.destination.register_request_handler(self.PATH_INDEX,   response_generator=self.serve_front_page,   allow=RNS.Destination.ALLOW_ALL)
-        self.destination.register_request_handler(self.PATH_GROUP,   response_generator=self.serve_group_page,   allow=RNS.Destination.ALLOW_ALL)
-        self.destination.register_request_handler(self.PATH_REPO,    response_generator=self.serve_repo_page,    allow=RNS.Destination.ALLOW_ALL)
-        self.destination.register_request_handler(self.PATH_TREE,    response_generator=self.serve_tree_page,    allow=RNS.Destination.ALLOW_ALL)
-        self.destination.register_request_handler(self.PATH_BLOB,    response_generator=self.serve_blob_page,    allow=RNS.Destination.ALLOW_ALL)
-        self.destination.register_request_handler(self.PATH_COMMITS, response_generator=self.serve_commits_page, allow=RNS.Destination.ALLOW_ALL)
-        self.destination.register_request_handler(self.PATH_COMMIT,  response_generator=self.serve_commit_page,  allow=RNS.Destination.ALLOW_ALL)
-        self.destination.register_request_handler(self.PATH_REFS,    response_generator=self.serve_refs_page,    allow=RNS.Destination.ALLOW_ALL)
-        self.destination.register_request_handler(self.PATH_STATS,   response_generator=self.serve_stats_page,   allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_INDEX,    response_generator=self.serve_front_page,    allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_GROUP,    response_generator=self.serve_group_page,    allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_REPO,     response_generator=self.serve_repo_page,     allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_TREE,     response_generator=self.serve_tree_page,     allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_BLOB,     response_generator=self.serve_blob_page,     allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_COMMITS,  response_generator=self.serve_commits_page,  allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_COMMIT,   response_generator=self.serve_commit_page,   allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_REFS,     response_generator=self.serve_refs_page,     allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_STATS,    response_generator=self.serve_stats_page,    allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_RELEASES, response_generator=self.serve_releases_page, allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_RELEASE,  response_generator=self.serve_release_page,  allow=RNS.Destination.ALLOW_ALL)
 
     def get_template(self, template):
         filename = f"{template}.mu"
@@ -317,7 +327,7 @@ class NomadNetworkNode():
         group_name = data.get("var_g", "") if data else ""
 
         if not group_name:
-            content = self.m_heading("Error", 1) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
             return self.render_template(content, st=st)
 
         accessible_repos = self.get_accessible_repositories(remote_identity, group_name)
@@ -363,7 +373,7 @@ class NomadNetworkNode():
         thanks = True if data.get("var_thanks", "") else False
 
         if not group_name or not repo_name:
-            content = self.m_heading("Error", 1) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
             return self.render_template(content, st=st)
         
         content_parts = []
@@ -395,8 +405,15 @@ class NomadNetworkNode():
         branch_count = len(refs.get("heads", [])) if refs else 0
         tag_count = len(refs["tags"]) if refs else 0
         
+        # Get releases count
+        releases_path = f"{repo['path']}.releases"
+        releases_count = 0
+        releases = self.owner.releases_list_data(releases_path)
+        if releases: releases_count = len([r for r in releases if r.get("status") == "published"])
+
         sep = self.icon("sep")
         content_parts.append(f"{self.m_link_r(self.icon("folder")+" Files", self.PATH_TREE, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
+        if releases_count: content_parts.append(f"{self.m_link_r(self.icon("package")+f" Releases ({releases_count})", self.PATH_RELEASES, g=group_name, r=repo_name)} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("commits")+f" Commits ({commits_count})", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")} {sep} ")
@@ -825,7 +842,7 @@ class NomadNetworkNode():
 
         commit_info = self.get_commit_info(repo_path, resolved_hash)
         if not commit_info:
-            content_parts.append(self.m_heading("Error", 1) + "\n\nCould not retrieve commit information.\n")
+            content_parts.append(self.m_heading("Error", 2) + "\n\nCould not retrieve commit information.\n")
             page_content = "".join(content_parts)
             return self.render_template(page_content, st=st)
 
@@ -1016,7 +1033,7 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "") if data else ""
 
         if not group_name or not repo_name:
-            content = self.m_heading("Error", 1) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
             return self.render_template(content, st=st)
         
         content_parts = []
@@ -1090,6 +1107,147 @@ class NomadNetworkNode():
         page_content = "".join(content_parts)
         nav_content  = "".join(nav_parts)
         return self.render_template(page_content, nav_content=nav_content, template="stats", st=st)
+
+    def serve_releases_page(self, path, data, request_id, link_id, remote_identity, requested_at):
+        st = time.time()
+        RNS.log(f"Releases page request from {remote_identity}", RNS.LOG_DEBUG)
+
+        if not data: data = {}
+        group_name = data.get("var_g", "") if data else ""
+        repo_name  = data.get("var_r", "") if data else ""
+
+        if not group_name or not repo_name:
+            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            return self.render_template(content, st=st)
+
+        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
+        if not repo:
+            content = self.m_heading("Error", 2) + "\nThe requested repository was not found.\n"
+            return self.render_template(content, st=st)
+
+        content_parts = []
+        nav_parts = []
+
+        # Breadcrumb navigation
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / releases"
+        nav_parts.append(breadcrumb + "\n")
+        nav_content = "".join(nav_parts)
+
+        releases_path = f"{repo['path']}.releases"
+        releases = self.owner.releases_list_data(releases_path)
+        if not releases:
+            content_parts.append(self.m_heading("Releases", 2))
+            content_parts.append("\nNo releases available for this repository.\n")
+            page_content = "".join(content_parts)
+            return self.render_template(page_content, nav_content=nav_content, template="repo", st=st)
+
+        published_releases = [r for r in releases if r.get("status") == "published"]
+        
+        content_parts.append(self.m_heading(f"Releases ({len(published_releases)})", 2))
+        content_parts.append("\n")
+
+        for rel in published_releases:
+            tag = rel.get("tag", "unknown")
+            created_ts = rel.get("created", 0)
+            date_str = time.strftime("%Y-%m-%d", time.localtime(created_ts)) if created_ts else "unknown"
+            artifacts = rel.get("artifacts", 0)
+            preview = rel.get("preview", "")[:256]
+            if len(rel.get("preview", "")) > len(preview): preview += "…"
+            
+            link = self.m_link(tag, self.PATH_RELEASE, g=group_name, r=repo_name, t=tag)
+            
+            sep = self.icon("sep")
+            artifacts_str = f"`*{artifacts} artifact{'s' if artifacts != 1 else ''}`*"
+            content_parts.append(f"{link} {self.CLR_DIM}{date_str} {sep} {artifacts_str}`f\n")
+            if preview: content_parts.append(f"{self.m_escape(preview)}\n")
+            content_parts.append("\n")
+
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
+        page_content = "".join(content_parts)
+        return self.render_template(page_content, nav_content=nav_content, template="releases", st=st)
+
+    def serve_release_page(self, path, data, request_id, link_id, remote_identity, requested_at):
+        st = time.time()
+        RNS.log(f"Release page request from {remote_identity}", RNS.LOG_DEBUG)
+
+        if not data: data = {}
+        group_name = data.get("var_g", "") if data else ""
+        repo_name = data.get("var_r", "") if data else ""
+        tag = data.get("var_t", "") if data else ""
+
+        if not group_name or not repo_name or not tag:
+            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            return self.render_template(content, st=st)
+
+        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
+        if not repo:
+            content = self.m_heading("Error", 2) + "\nThe requested repository was not found.\n"
+            return self.render_template(content, st=st)
+
+        content_parts = []
+        nav_parts = []
+
+        # Breadcrumb navigation
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / {self.m_link('releases', self.PATH_RELEASES, g=group_name, r=repo_name)} / {tag}"
+        nav_parts.append(breadcrumb + "\n")
+        nav_content = "".join(nav_parts)
+
+        releases_path = f"{repo['path']}.releases"
+        release_dir = os.path.join(releases_path, tag)
+        
+        if not os.path.isdir(release_dir):
+            content = self.m_heading("Release Not Found", 2) + f"\nThe release {tag} does not exist.\n"
+            return self.render_template(content, nav_content=nav_content, st=st)
+
+        release_info = self.owner.release_data(release_dir, tag)
+        if not release_info:
+            content = self.m_heading("Error", 2) + "\nCould not load release data.\n"
+            return self.render_template(content, nav_content=nav_content, st=st)
+
+        # Only show published releases
+        if release_info.get("status") != "published":
+            content = self.m_heading("Release Not Found", 2) + f"\nThe release {tag} does not exist.\n"
+            return self.render_template(content, nav_content=nav_content, st=st)
+
+        sep = self.icon("sep")
+        heart = self.icon("heart")
+        created_ts = release_info.get("created", 0)
+        ts_str = f" {sep} {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(created_ts))}" if created_ts else ""
+        content_parts.append(self.m_heading(f"Release {tag}{ts_str}", 2))
+        content_parts.append("\n")
+
+        # Release notes
+        notes = release_info.get("notes", "")
+        if notes:
+            notes_format = release_info.get("notes_format", "text")
+            if   notes_format == "micron":   content_parts.append(f"{notes}\n")
+            elif notes_format == "markdown": content_parts.append(f"{self.mdc.format_block(notes)}\n")
+            else:                            content_parts.append(f"`={notes}`=\n")
+            content_parts.append("\n")
+
+        # Artifacts
+        artifacts = release_info.get("artifacts", [])
+        if artifacts:
+            content_parts.append(self.m_heading(f"Artifacts ({len(artifacts)})", 2))
+            content_parts.append("\n")
+            for art in artifacts:
+                name = art.get("name", "unknown")
+                size = art.get("size", 0)
+                size_str = RNS.prettysize(size) if size else "0 B"
+                content_parts.append(f"{self.icon('file')} {self.m_escape(name)} {self.CLR_DIM}({size_str})`f\n")
+            content_parts.append("\n")
+
+        else:
+            content_parts.append(self.m_heading("Artifacts", 2))
+            content_parts.append("\nNo artifacts for this release.\n\n")
+
+        thanks = True if data.get("var_thanks", "") else False
+        thanks_count = self.release_thanks(release_dir, add=thanks, link_id=link_id)
+        content_parts.append(f"{self.m_link_r(self.icon("heart")+f" Thanks ({thanks_count})", self.PATH_RELEASE, g=group_name, r=repo_name, t=tag, thanks="y")}\n")
+
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
+        page_content = "".join(content_parts)
+        return self.render_template(page_content, nav_content=nav_content, template="release", st=st)
 
     #######################
     # Git Data Extraction #
@@ -1615,6 +1773,31 @@ class NomadNetworkNode():
         except Exception as e: RNS.log(f"Error while processing repository thanks for {group_name}/{repo_name}: {e}", RNS.LOG_ERROR)
         return 0
 
+    def release_thanks(self, release_path, add=False, link_id=None):
+        if add:
+            thanks_hash = RNS.Identity.full_hash(link_id+release_path.encode("utf-8"))
+            if thanks_hash in self.thanks_deque: add = False
+            else:                                self.thanks_deque.append(thanks_hash)
+
+        try:
+            thanks_path = f"{release_path}/THANKS"
+            if not os.path.isfile(thanks_path):
+                thanks_count = 1 if add else 0
+                with open(thanks_path, "wb") as fh: fh.write(mp.packb({"count": thanks_count}))
+
+            else:
+                with open(thanks_path, "rb") as fh:
+                    thanks_data = mp.unpackb(fh.read())
+                    if "count" in thanks_data: thanks_count = thanks_data["count"]
+                    else: raise ValueError("Invalid data in thanks file")
+
+                if add: thanks_count += 1
+                with open(thanks_path, "wb") as fh: fh.write(mp.packb({"count": thanks_count}))
+                return thanks_count
+
+        except Exception as e: RNS.log(f"Error while processing release thanks for {group_name}/{repo_name}: {e}", RNS.LOG_ERROR)
+        return 0
+
     ###################
     # Stats Renderers #
     ###################
@@ -1787,6 +1970,12 @@ DEFAULT_GROUP_TEMPLATE = """{PAGE_CONTENT}"""
 
 # Repository page template
 DEFAULT_REPO_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Repository page template
+DEFAULT_RELEASES_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Repository page template
+DEFAULT_RELEASE_TEMPLATE = """{PAGE_CONTENT}"""
 
 # Tree page template
 DEFAULT_TREE_TEMPLATE = """{PAGE_CONTENT}"""
