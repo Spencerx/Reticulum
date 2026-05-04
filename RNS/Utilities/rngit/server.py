@@ -106,11 +106,13 @@ class ReticulumGitNode():
     PERM_READWRITE  = 0x03
     PERM_CREATE     = 0x04
     PERM_STATS      = 0x05
+    PERM_RELEASE    = 0x06
     PERM_R_SMPHR    = ["r", "read"]
     PERM_W_SMPHR    = ["w", "write"]
     PERM_RW_SMPHR   = ["rw", "readwrite"]
     PERM_C_SMPHR    = ["c", "create"]
     PERM_S_SMPHR    = ["s", "stats"]
+    PERM_REL_SMPHR  = ["rel", "release"]
 
     TGT_NONE        = 0x01
     TGT_ALL         = 0x02
@@ -296,28 +298,31 @@ class ReticulumGitNode():
                         perm, target = self.parse_permission(entry)
                         if not perm or not target: continue
                         else:
-                            read = False; write = False; create = False; stats = False
-                            if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read   = True
-                            if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write  = True
-                            if perm == self.PERM_CREATE:                               create = True
-                            if perm == self.PERM_STATS:                                stats  = True
+                            read = False; write = False; create = False; stats = False; release = False
+                            if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read    = True
+                            if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write   = True
+                            if perm == self.PERM_CREATE:                               create  = True
+                            if perm == self.PERM_STATS:                                stats   = True
+                            if perm == self.PERM_RELEASE:                              release = True
 
-                            if read   and not target in self.groups[group_name]["read"]:   self.groups[group_name]["read"].append(target)
-                            if write  and not target in self.groups[group_name]["write"]:  self.groups[group_name]["write"].append(target)
-                            if create and not target in self.groups[group_name]["create"]: self.groups[group_name]["create"].append(target)
-                            if stats  and not target in self.groups[group_name]["stats"]:  self.groups[group_name]["stats"].append(target)
+                            if read    and not target in self.groups[group_name]["read"]:    self.groups[group_name]["read"].append(target)
+                            if write   and not target in self.groups[group_name]["write"]:   self.groups[group_name]["write"].append(target)
+                            if create  and not target in self.groups[group_name]["create"]:  self.groups[group_name]["create"].append(target)
+                            if stats   and not target in self.groups[group_name]["stats"]:   self.groups[group_name]["stats"].append(target)
+                            if release and not target in self.groups[group_name]["release"]: self.groups[group_name]["release"].append(target)
 
     def parse_permission(self, permission_string):
         comps = permission_string.split(":")
         if not len(comps) == 2: return None, None
         else:
             perm = comps[0].lower(); target = comps[1]
-            if   perm in self.PERM_R_SMPHR:  perm = self.PERM_READ
-            elif perm in self.PERM_W_SMPHR:  perm = self.PERM_WRITE
-            elif perm in self.PERM_RW_SMPHR: perm = self.PERM_READWRITE
-            elif perm in self.PERM_C_SMPHR:  perm = self.PERM_CREATE
-            elif perm in self.PERM_S_SMPHR:  perm = self.PERM_STATS
-            else:                            perm = None
+            if   perm in self.PERM_R_SMPHR:   perm = self.PERM_READ
+            elif perm in self.PERM_W_SMPHR:   perm = self.PERM_WRITE
+            elif perm in self.PERM_RW_SMPHR:  perm = self.PERM_READWRITE
+            elif perm in self.PERM_C_SMPHR:   perm = self.PERM_CREATE
+            elif perm in self.PERM_S_SMPHR:   perm = self.PERM_STATS
+            elif perm in self.PERM_REL_SMPHR: perm = self.PERM_RELEASE
+            else:                             perm = None
 
             if   target in self.TGT_NONE_SMPHR: target = self.TGT_NONE
             elif target in self.TGT_ALL_SMPHR:  target = self.TGT_ALL
@@ -362,6 +367,10 @@ class ReticulumGitNode():
                 repository_permissions = self.groups[group_name]["repositories"][repository_name]["stats"]
                 group_permissions      = self.groups[group_name]["stats"]
 
+            elif permission == self.PERM_RELEASE:
+                repository_permissions = self.groups[group_name]["repositories"][repository_name]["release"]
+                group_permissions      = self.groups[group_name]["release"]
+
             else: return False
 
             if   self.TGT_NONE in repository_permissions: return False
@@ -403,6 +412,7 @@ class ReticulumGitNode():
                         write_allowed   = []
                         create_allowed  = []
                         stats_allowed   = []
+                        release_allowed = []
 
                         if os.path.isfile(allowed_path):
                             if os.access(allowed_path, os.X_OK):
@@ -420,20 +430,22 @@ class ReticulumGitNode():
                                     perm, target = self.parse_permission(perm_input)
                                     if not perm or not target: continue
                                     else:
-                                        read = False; write = False; create = False; stats = False
-                                        if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read   = True
-                                        if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write  = True
-                                        if perm == self.PERM_CREATE:                               create = True
-                                        if perm == self.PERM_STATS:                                stats  = True
+                                        read = False; write = False; create = False; stats = False; release = False
+                                        if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read    = True
+                                        if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write   = True
+                                        if perm == self.PERM_CREATE:                               create  = True
+                                        if perm == self.PERM_STATS:                                stats   = True
+                                        if perm == self.PERM_RELEASE:                              release = True
 
-                                        if read   and not target in read_allowed:   read_allowed.append(target)
-                                        if write  and not target in write_allowed:  write_allowed.append(target)
-                                        if create and not target in create_allowed: create_allowed.append(target)
-                                        if stats  and not target in stats_allowed:  stats_allowed.append(target)
+                                        if read    and not target in read_allowed:    read_allowed.append(target)
+                                        if write   and not target in write_allowed:   write_allowed.append(target)
+                                        if create  and not target in create_allowed:  create_allowed.append(target)
+                                        if stats   and not target in stats_allowed:   stats_allowed.append(target)
+                                        if release and not target in release_allowed: stats_allowed.append(target)
 
                         group["repositories"][repository_name] = {"name": repository_name, "group": group_name, "path": path,
-                                                                  "read": read_allowed, "write": write_allowed,
-                                                                  "create": create_allowed, "stats": stats_allowed }
+                                                                  "read": read_allowed, "write": write_allowed, "create": create_allowed,
+                                                                  "stats": stats_allowed , "release": release_allowed }
                         loaded += 1
 
         ms = "y" if loaded == 1 else "ies"
