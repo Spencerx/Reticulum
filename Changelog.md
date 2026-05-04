@@ -9,8 +9,8 @@ This release adds release management workflows to the `rngit` utility. Downloadi
 
 **Release Hashes**
 ```
-019da0712527627e534403b354b006ca0122441cd916171aeb1113fc492d584a rns-1.2.2-py3-none-any.whl
-fd413a9701916a91d9faea8f20d4078bc1bdfdc14521b0b458742849c8a74a12 rnspure-1.2.2-py3-none-any.whl
+4bf0a376a9778de8a91b9ec8a5bc4b929be928eede8784b20022c7fe52bbce62 rns-1.2.2-py3-none-any.whl
+d85f8b765dcf718d284388b249ca0e48e785f250bb41773a83e159e46c5bcf70 rnspure-1.2.2-py3-none-any.whl
 ```
 
 **Release Signatures**
