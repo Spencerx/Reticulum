@@ -30,6 +30,7 @@
 
 import RNS
 import os
+import sys
 import time
 import argparse
 import threading
@@ -44,7 +45,9 @@ from RNS.Utilities.rngit.pages import NomadNetworkNode
 from RNS.vendor.configobj import ConfigObj
 from RNS.vendor import umsgpack as mp
 
-def program_setup(configdir, rnsconfigdir=None, verbosity=0, quietness=0, service=False, interactive=False, print_identity=False):
+def program_setup(configdir, rnsconfigdir=None, verbosity=0, quietness=0, service=False, interactive=False,
+                  print_identity=False, task=None, identity=None):
+    
     targetverbosity = verbosity-quietness
 
     if service:
@@ -57,28 +60,57 @@ def program_setup(configdir, rnsconfigdir=None, verbosity=0, quietness=0, servic
 
     reticulum  = RNS.Reticulum(configdir=rnsconfigdir, verbosity=targetverbosity, logdest=targetlogdest)
 
-    RNS.log("Starting Reticulum Git Node...", RNS.LOG_NOTICE)
-    git_node = ReticulumGitNode(configdir=configdir, verbosity=targetverbosity)
-    if not git_node.ready: exit(255)
-    else: git_node.start()
+    if not task:
+        RNS.log("Starting Reticulum Git Node...", RNS.LOG_NOTICE)
+        git_node = ReticulumGitNode(configdir=configdir, verbosity=targetverbosity)
+        if not git_node.ready: exit(255)
+        else: git_node.start()
 
-    if interactive:
-        import code
-        code.interact(local=globals())
-    
+        if interactive:
+            import code
+            code.interact(local=globals())
+        
+        else:
+            while git_node._should_run: time.sleep(1)
+
     else:
-        while git_node._should_run: time.sleep(1)
+        command = task["command"]; operation = task["operation"]
+        if command == "release":
+            git_client = ReticulumGitClient(configdir=configdir, verbosity=targetverbosity, identitypath=identity)
+            if   operation == "list":   git_client.list_releases(remote=task["remote"])
+            elif operation == "view":   git_client.view_release(remote=task["remote"], target=task["target"])
+            elif operation == "create": git_client.create_release(remote=task["remote"], target=task["target"])
+            elif operation == "delete": git_client.delete_release(remote=task["remote"], target=task["target"])
+            else:                       print("Invalid operation"); exit(1)
+
+        else: print("Invalid command"); exit(1)
 
     exit(0)
 
 def main():
+    subcommands = ["node", "release"]
     try:
-        parser = argparse.ArgumentParser(description="Reticulum Git Repository Node")
-        parser.add_argument("--config", action="store", default=None, help="path to alternative config directory", type=str)
-        parser.add_argument("--rnsconfig", action="store", default=None, help="path to alternative Reticulum config directory", type=str)
-        parser.add_argument('-p', '--print-identity', action='store_true', default=False, help="print identity and destination info and exit")
-        parser.add_argument('-s', '--service', action='store_true', default=False, help="rngit is running as a service and should log to file")
-        parser.add_argument('-i', '--interactive', action='store_true', default=False, help="drop into interactive shell after initialisation")
+        if len(sys.argv) < 2 or sys.argv[1] not in subcommands: subcommand = "node"
+        else:                                      subcommand = sys.argv[1]; sys.argv.pop(1)
+
+        if subcommand == "node":
+            sys.argv
+            parser = argparse.ArgumentParser(description="Reticulum Git Repository Node")
+            parser.add_argument("--config", action="store", default=None, help="path to alternative config directory", type=str)
+            parser.add_argument("--rnsconfig", action="store", default=None, help="path to alternative Reticulum config directory", type=str)
+            parser.add_argument('-p', '--print-identity', action='store_true', default=False, help="print identity and destination info and exit")
+            parser.add_argument('-s', '--service', action='store_true', default=False, help="rngit is running as a service and should log to file")
+            parser.add_argument('-i', '--interactive', action='store_true', default=False, help="drop into interactive shell after initialisation")
+
+        elif subcommand == "release":
+            parser = argparse.ArgumentParser(description="Reticulum Git Release Manager")
+            parser.add_argument("--config", action="store", default=None, help="path to alternative config directory", type=str)
+            parser.add_argument("--rnsconfig", action="store", default=None, help="path to alternative Reticulum config directory", type=str)
+            parser.add_argument("-i", "--identity", action="store", metavar="PATH", default=None, help="path to release identity", type=str)
+            parser.add_argument("operation", nargs="?", default=None, help="list, view, create or delete", type=str)
+            parser.add_argument("repository", nargs="?", default=None, help="URL of remote repository", type=str)
+            parser.add_argument("target", nargs="?", default=None, help="tag or path to release artifacts directory", type=str)
+        
         parser.add_argument('-v', '--verbose', action='count', default=0)
         parser.add_argument('-q', '--quiet', action='count', default=0)
         parser.add_argument("--version", action="version", version="rngit {version}".format(version=__version__))
@@ -91,12 +123,123 @@ def main():
         if args.rnsconfig: rnsconfigarg = args.rnsconfig
         else:              rnsconfigarg = None
 
-        program_setup(configdir = configarg, rnsconfigdir=rnsconfigarg, service=args.service, verbosity=args.verbose,
-                      quietness=args.quiet, interactive=args.interactive, print_identity=args.print_identity)
+        if subcommand == "node":
+            program_setup(configdir = configarg, rnsconfigdir=rnsconfigarg, service=args.service, verbosity=args.verbose,
+                          quietness=args.quiet, interactive=args.interactive, print_identity=args.print_identity)
+
+        elif subcommand == "release":
+            task = {"command": subcommand, "operation": args.operation, "remote": args.repository, "target": args.target}
+            program_setup(configdir = configarg, rnsconfigdir=rnsconfigarg, service=False, verbosity=args.verbose,
+                          quietness=args.quiet, interactive=False, print_identity=False, task=task, identity=args.identity)
 
     except KeyboardInterrupt:
         print("")
         exit()
+
+class ReticulumGitClient():
+    PROTO_SPEC = "rns://"
+
+    PATH_TIMEOUT    = 15
+    LINK_TIMEOUT    = 15
+
+    def __init__(self, configdir=None, verbosity=None, identitypath=None):
+        self.identity            = None
+        self.userdir             = os.path.expanduser("~")
+        self.config              = None
+        self.verbosity           = verbosity or 0
+        self.path_timeout        = self.PATH_TIMEOUT
+        self.link_timeout        = self.LINK_TIMEOUT
+        self._should_run         = True
+
+        if not ReticulumGitNode._ensure_git(): RNS.log("The \"git\" command is not available. Aborting server startup.", RNS.LOG_ERROR)
+        else:
+            if configdir != None: self.configdir = configdir
+            else:
+                if os.path.isdir(self.userdir+"/.config/rngit") and os.path.isfile(self.userdir+"/.config/rngit/config"): self.configdir = self.userdir+"/.rngit/reticulum"
+                else: self.configdir = self.userdir+"/.rngit"
+            
+            self.logfile = self.configdir+"/client_log"
+            self.configpath = self.configdir+"/client_config"
+            self.identitypath = identitypath or self.configdir+"/client_identity"
+
+            if not os.path.isfile(self.identitypath):
+                identity = RNS.Identity()
+                identity.to_file(self.identitypath)
+                print(f"Identity generated and persisted to {self.identitypath}")
+            
+            else:
+                identity = RNS.Identity.from_file(self.identitypath)
+                print(f"Client identity loaded from {self.identitypath}")
+
+            if not identity: self.abort("Could not initialize client identity")
+            else:            self.identity = identity
+
+    def abort(self, msg):
+        print(msg); exit(1)
+
+    def parse_remote_url(self, remote):
+        if not remote.lower().startswith(self.PROTO_SPEC): self.abort("Invalid protocol in remote URL")
+        components = remote[len(self.PROTO_SPEC):].split("/")
+        if not len(components) == 3: self.abort("Invalid number of URL components")
+        if not len(components[0]) == RNS.Identity.TRUNCATED_HASHLENGTH//8*2: self.abort("Invalid destination hash length")
+        try: destination_hash = bytes.fromhex(components[0])
+        except Exception as e: self.abort(f"Invalid destination hash: {e}")
+        return destination_hash, components[1], components[2]
+
+    def connect_remote(self, remote):
+        destination_hash, group, repo = self.parse_remote_url(remote)
+        print(f"Requesting path...", end="")
+        if not RNS.Transport.await_path(destination_hash, timeout=self.path_timeout):
+            print(f"\n", end="")
+            self.abort(f"Could not resolve path to {RNS.prettyhexrep(destination_hash)}")
+        
+        else: print(f"\rPath resolved      ", end="")
+
+        self.remote_identity = RNS.Identity.recall(destination_hash)
+        if not self.remote_identity: self.abort("Could not recall remote identity")
+
+        print(f"\rEstablishing link...")
+        self.destination = RNS.Destination(self.remote_identity, RNS.Destination.OUT, RNS.Destination.SINGLE, APP_NAME, "repositories")
+        self.link = RNS.Link(self.destination)
+        self.link.set_link_established_callback(self.link_established)
+        self.link.set_link_closed_callback(self.link_closed)
+
+    def link_established(self, link):
+        link.identify(self.identity)
+
+    def link_closed(self, link):
+        print("The link to the remote was closed")
+
+    def list_releases(self, remote=None):
+        if not remote: print(f"No remote specified"); exit(1)
+        self.connect_remote(remote)
+
+        # TODO: Implement release listing
+        pass
+
+    def view_release(self, remote=None, target=None):
+        if not remote: print(f"No remote specified"); exit(1)
+        if not target: print(f"No target specified"); exit(1)
+        self.connect_remote(remote)
+        
+        # TODO: Implement release listing
+        pass
+
+    def create_release(self, remote=None, target=None):
+        if not remote: print(f"No remote specified"); exit(1)
+        if not target: print(f"No target specified"); exit(1)
+        self.connect_remote(remote)
+        
+        # TODO: Implement release listing
+        pass
+
+    def delete_release(self, remote=None, target=None):
+        if not remote: print(f"No remote specified"); exit(1)
+        if not target: print(f"No target specified"); exit(1)
+        self.connect_remote(remote)
+        
+        # TODO: Implement release listing
+        pass
 
 class ReticulumGitNode():
     JOBS_INTERVAL   = 5
@@ -123,6 +266,7 @@ class ReticulumGitNode():
     PATH_FETCH      = "/git/fetch"
     PATH_PUSH       = "/git/push"
     PATH_DELETE     = "/git/delete"
+    PATH_RELEASE    = "/mgmt/release"
 
     RES_OK          = 0x00
     RES_DISALLOWED  = 0x01
@@ -159,7 +303,7 @@ class ReticulumGitNode():
         self._should_run         = False
         self._serve_nomadnet     = False
 
-        if not self.__ensure_git(): RNS.log("The \"git\" command is not available. Aborting server startup.", RNS.LOG_ERROR)
+        if not self._ensure_git(): RNS.log("The \"git\" command is not available. Aborting server startup.", RNS.LOG_ERROR)
         else:
             if configdir != None: self.configdir = configdir
             else:
@@ -500,7 +644,8 @@ class ReticulumGitNode():
 
             except Exception as e: RNS.log(f"Error while running periodic jobs: {e}", RNS.LOG_ERROR)
 
-    def __ensure_git(self):
+    @staticmethod
+    def _ensure_git():
         try: subprocess.run(["git", "--version"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); return True
         except: return False
 
@@ -526,10 +671,11 @@ class ReticulumGitNode():
 
     def register_request_handlers(self):
         ga_list = self.global_allowed_list if self.global_allow == RNS.Destination.ALLOW_LIST else None
-        self.destination.register_request_handler(self.PATH_LIST,   self.handle_list,   allow=self.global_allow, allowed_list=ga_list)
-        self.destination.register_request_handler(self.PATH_FETCH,  self.handle_fetch,  allow=self.global_allow, allowed_list=ga_list)
-        self.destination.register_request_handler(self.PATH_PUSH,   self.handle_push,   allow=self.global_allow, allowed_list=ga_list)
-        self.destination.register_request_handler(self.PATH_DELETE, self.handle_delete, allow=self.global_allow, allowed_list=ga_list)
+        self.destination.register_request_handler(self.PATH_LIST,    self.handle_list,    allow=self.global_allow, allowed_list=ga_list)
+        self.destination.register_request_handler(self.PATH_FETCH,   self.handle_fetch,   allow=self.global_allow, allowed_list=ga_list)
+        self.destination.register_request_handler(self.PATH_PUSH,    self.handle_push,    allow=self.global_allow, allowed_list=ga_list)
+        self.destination.register_request_handler(self.PATH_DELETE,  self.handle_delete,  allow=self.global_allow, allowed_list=ga_list)
+        self.destination.register_request_handler(self.PATH_RELEASE, self.handle_release, allow=self.global_allow, allowed_list=ga_list)
 
     def remote_connected(self, link):
         RNS.log(f"Peer connected to {self.destination}", RNS.LOG_DEBUG)
@@ -784,6 +930,45 @@ class ReticulumGitNode():
 
             except Exception as e:
                 RNS.log(f"Error while handling delete request for {group_name}/{repository_name}: {e}", RNS.LOG_ERROR)
+                return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+    def handle_release(self, path, data, request_id, remote_identity, requested_at):
+        RNS.log(f"Release request from remote {remote_identity}", RNS.LOG_DEBUG)
+        if not remote_identity:             return self.RES_DISALLOWED.to_bytes(1, "big")  + b"Not identified"
+        if not type(data) == dict:          return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+        if not self.IDX_REPOSITORY in data: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No repository specified"
+
+        operation = data.get("operation")
+        if not operation: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+
+        group_name, repository_name = self.parse_request_repository_path(data[self.IDX_REPOSITORY])
+        read_access    = self.resolve_permission(remote_identity, group_name, repository_name, self.PERM_READ)
+        release_access = self.resolve_permission(remote_identity, group_name, repository_name, self.PERM_RELEASE)
+        access         = False
+
+        if not read_access: return self.RES_NOT_FOUND.to_bytes(1, "big") + b"Not found"
+        
+        if   operation in ["create", "delete"] and release_access and read_access: access = True
+        elif operation in ["list", "view"] and read_access:                        access = True
+        else:                                                                      access = False
+        
+        if not access: return self.RES_DISALLOWED.to_bytes(1, "big") + b"Not allowed"
+        else:
+            repository_path = self.groups[group_name]["repositories"][repository_name]["path"]
+            releases_path   = f"{repository_path}.releases"
+
+            try:
+                # TODO: Implement release management handlers
+                if   operation == "list" and read_access:      pass
+                elif operation == "view" and read_access:      pass
+                elif operation == "create" and release_access: pass
+                elif operation == "delete" and release_access: pass
+                else: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+
+                return b"\x00"
+
+            except Exception as e:
+                RNS.log(f"Error while handling release request for {group_name}/{repository_name}: {e}", RNS.LOG_ERROR)
                 return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
 
     def repository_stats(self, remote_identity, group_name, repository_name, lookback_days=14):
