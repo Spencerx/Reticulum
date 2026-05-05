@@ -602,12 +602,14 @@ class ReticulumGitNode():
     PERM_CREATE     = 0x04
     PERM_STATS      = 0x05
     PERM_RELEASE    = 0x06
+    PERM_INTERACT   = 0x07
     PERM_R_SMPHR    = ["r", "read"]
     PERM_W_SMPHR    = ["w", "write"]
     PERM_RW_SMPHR   = ["rw", "readwrite"]
     PERM_C_SMPHR    = ["c", "create"]
     PERM_S_SMPHR    = ["s", "stats"]
     PERM_REL_SMPHR  = ["rel", "release"]
+    PERM_I_SMPHR    = ["i", "interact"]
 
     TGT_NONE        = 0x01
     TGT_ALL         = 0x02
@@ -795,17 +797,19 @@ class ReticulumGitNode():
                         if not perm or not target: continue
                         else:
                             read = False; write = False; create = False; stats = False; release = False
-                            if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read    = True
-                            if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write   = True
-                            if perm == self.PERM_CREATE:                               create  = True
-                            if perm == self.PERM_STATS:                                stats   = True
-                            if perm == self.PERM_RELEASE:                              release = True
+                            if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read     = True
+                            if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write    = True
+                            if perm == self.PERM_CREATE:                               create   = True
+                            if perm == self.PERM_STATS:                                stats    = True
+                            if perm == self.PERM_RELEASE:                              release  = True
+                            if perm == self.PERM_INTERACT:                             interact = True
 
-                            if read    and not target in self.groups[group_name]["read"]:    self.groups[group_name]["read"].append(target)
-                            if write   and not target in self.groups[group_name]["write"]:   self.groups[group_name]["write"].append(target)
-                            if create  and not target in self.groups[group_name]["create"]:  self.groups[group_name]["create"].append(target)
-                            if stats   and not target in self.groups[group_name]["stats"]:   self.groups[group_name]["stats"].append(target)
-                            if release and not target in self.groups[group_name]["release"]: self.groups[group_name]["release"].append(target)
+                            if read     and not target in self.groups[group_name]["read"]:     self.groups[group_name]["read"].append(target)
+                            if write    and not target in self.groups[group_name]["write"]:    self.groups[group_name]["write"].append(target)
+                            if create   and not target in self.groups[group_name]["create"]:   self.groups[group_name]["create"].append(target)
+                            if stats    and not target in self.groups[group_name]["stats"]:    self.groups[group_name]["stats"].append(target)
+                            if release  and not target in self.groups[group_name]["release"]:  self.groups[group_name]["release"].append(target)
+                            if interact and not target in self.groups[group_name]["interact"]: self.groups[group_name]["interact"].append(target)
 
     def parse_permission(self, permission_string):
         comps = permission_string.split(":")
@@ -818,6 +822,7 @@ class ReticulumGitNode():
             elif perm in self.PERM_C_SMPHR:   perm = self.PERM_CREATE
             elif perm in self.PERM_S_SMPHR:   perm = self.PERM_STATS
             elif perm in self.PERM_REL_SMPHR: perm = self.PERM_RELEASE
+            elif perm in self.PERM_I_SMPHR:   perm = self.PERM_INTERACT
             else:                             perm = None
 
             if   target in self.TGT_NONE_SMPHR: target = self.TGT_NONE
@@ -867,6 +872,10 @@ class ReticulumGitNode():
                 repository_permissions = self.groups[group_name]["repositories"][repository_name]["release"]
                 group_permissions      = self.groups[group_name]["release"]
 
+            elif permission == self.PERM_INTERACT:
+                repository_permissions = self.groups[group_name]["repositories"][repository_name]["interact"]
+                group_permissions      = self.groups[group_name]["interact"]
+
             else: return False
 
             if   self.TGT_NONE in repository_permissions: return False
@@ -885,7 +894,9 @@ class ReticulumGitNode():
 
     def load_repository_group(self, group_name, group_path):
         # TODO: Implement group.allowed file
-        if not group_name in self.groups: self.groups[group_name] = { "path": group_path, "repositories": {}, "read": [], "write": [], "create": [], "stats": [], "release": [] }
+        if not group_name in self.groups: self.groups[group_name] = { "path": group_path, "repositories": {}, "read": [], "write": [], "create": [],
+                                                                      "stats": [], "release": [], "interact": [] }
+
         if group_name in self.groups and self.groups[group_name]["path"] != group_path:
             RNS.log(f"Repository group path did not match existing entry while loading {group_name}, aborting load", RNS.LOG_ERROR)
             return
@@ -902,13 +913,14 @@ class ReticulumGitNode():
                         RNS.log(f"You can change it to a bare repository using \"git config --bool core.bare true\".", RNS.LOG_WARNING)
 
                     else:
-                        repository_name = os.path.basename(path)
-                        allowed_path    = f"{path}.allowed"
-                        read_allowed    = []
-                        write_allowed   = []
-                        create_allowed  = []
-                        stats_allowed   = []
-                        release_allowed = []
+                        repository_name  = os.path.basename(path)
+                        allowed_path     = f"{path}.allowed"
+                        read_allowed     = []
+                        write_allowed    = []
+                        create_allowed   = []
+                        stats_allowed    = []
+                        release_allowed  = []
+                        interact_allowed = []
 
                         if os.path.isfile(allowed_path):
                             if os.access(allowed_path, os.X_OK):
@@ -927,21 +939,23 @@ class ReticulumGitNode():
                                     if not perm or not target: continue
                                     else:
                                         read = False; write = False; create = False; stats = False; release = False
-                                        if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read    = True
-                                        if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write   = True
-                                        if perm == self.PERM_CREATE:                               create  = True
-                                        if perm == self.PERM_STATS:                                stats   = True
-                                        if perm == self.PERM_RELEASE:                              release = True
+                                        if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read     = True
+                                        if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write    = True
+                                        if perm == self.PERM_CREATE:                               create   = True
+                                        if perm == self.PERM_STATS:                                stats    = True
+                                        if perm == self.PERM_RELEASE:                              release  = True
+                                        if perm == self.PERM_INTERACT:                             interact = True
 
-                                        if read    and not target in read_allowed:    read_allowed.append(target)
-                                        if write   and not target in write_allowed:   write_allowed.append(target)
-                                        if create  and not target in create_allowed:  create_allowed.append(target)
-                                        if stats   and not target in stats_allowed:   stats_allowed.append(target)
-                                        if release and not target in release_allowed: stats_allowed.append(target)
+                                        if read     and not target in read_allowed:     read_allowed.append(target)
+                                        if write    and not target in write_allowed:    write_allowed.append(target)
+                                        if create   and not target in create_allowed:   create_allowed.append(target)
+                                        if stats    and not target in stats_allowed:    stats_allowed.append(target)
+                                        if release  and not target in release_allowed:  release_allowed.append(target)
+                                        if interact and not target in interact_allowed: interact_allowed.append(target)
 
                         group["repositories"][repository_name] = {"name": repository_name, "group": group_name, "path": path,
                                                                   "read": read_allowed, "write": write_allowed, "create": create_allowed,
-                                                                  "stats": stats_allowed , "release": release_allowed }
+                                                                  "stats": stats_allowed , "release": release_allowed, "interact": interact_allowed }
                         loaded += 1
 
         ms = "y" if loaded == 1 else "ies"
