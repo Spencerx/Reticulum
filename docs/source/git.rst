@@ -1,8 +1,8 @@
 .. _git-main:
 
-************************
-Using Git Over Reticulum
-************************
+******************
+Git Over Reticulum
+******************
 
 A set of utilities for distributed collaborative software development and publishing is included in RNS.
 
@@ -41,7 +41,7 @@ View your identity and destination hashes:
   Repository Node Identity  : <153cb870b4665b8c1c348896292b0bad>
   Repositories Destination  : <0d7334d411d00120cbad24edf355fdd2>
 
-If the page server is enabled, the output will also include the Nomad Network destination hash.
+If the page node is enabled, the output will also include the Nomad Network destination hash.
 
 You can run ``rngit`` in service mode with logging to file:
 
@@ -153,7 +153,7 @@ When the page node is enabled, ``rngit`` will listen on a Nomad Network node des
 
 **Accessing Repository Pages**
 
-Once the page server is running, you can access it from any Nomad Network client by connecting to the Nomad Network destination. The page node provides the following views:
+Once the page node is running, you can access it from any Nomad Network client by connecting to the Nomad Network destination. The page node provides the following views:
 
 - **Front Page** - Lists all repository groups accessible to your identity
 - **Group Page** - Shows all repositories within a group
@@ -170,7 +170,7 @@ All pages respect the same permission system used for Git access. If an identity
 Formatting & Syntax Highlighting
 ================================
 
-If the ``pygments`` Python module is installed on your system, the page server will automatically apply syntax highlighting to code files. The highlighting supports a wide range of programming languages and uses a color theme optimized for terminal display.
+If the ``pygments`` Python module is installed on your system, the page node will automatically apply syntax highlighting to code files. The highlighting supports a wide range of programming languages and uses a color theme optimized for terminal display.
 
 To enable syntax highlighting, install pygments:
 
@@ -194,7 +194,7 @@ Code blocks in Markdown can include language hints for syntax highlighting:
 Customizing Templates
 =====================
 
-The page server uses a template system that allows complete customization of the generated pages. Templates are stored in the ``~/.rngit/templates/`` directory as Micron files.
+The page node uses a template system that allows complete customization of the generated pages. Templates are stored in the ``~/.rngit/templates/`` directory as Micron files.
 
 The following template files are supported:
 
@@ -225,7 +225,7 @@ Templates can be made executable to generate dynamic content. If a template file
 
 **Icon Sets**
 
-By default, the page server uses Nerd Font icons. If you prefer simpler icons or your terminal does not support Nerd Fonts, you can enable Unicode icons instead:
+By default, the page node uses Nerd Font icons. If you prefer simpler icons or your terminal does not support Nerd Fonts, you can enable Unicode icons instead:
 
 .. code:: text
 
@@ -235,7 +235,7 @@ By default, the page server uses Nerd Font icons. If you prefer simpler icons or
 
 **Repository Statistics**
 
-When statistics recording is enabled (see the ``record_stats`` configuration option), the page server can display activity charts for each repository. The statistics page shows:
+When statistics recording is enabled (see the ``record_stats`` configuration option), the page node can display activity charts for each repository. The statistics page shows:
 
 - Total and peak views, fetches and pushes
 - Daily activity charts over a 90-day period
@@ -245,16 +245,16 @@ To view statistics, a user must have the ``s`` (stats) permission for the reposi
 
 **Repository Thanks**
 
-The page server includes a "Thanks" feature that allows users to express appreciation for a repository. On each repository page, a "Thanks" link is displayed showing the current thanks count. Clicking this link registers a thank you for the repository.
+The page node includes a "Thanks" feature that allows users to express appreciation for a repository. On each repository page, a "Thanks" link is displayed showing the current thanks count. Clicking this link registers a thank you for the repository.
 
 **Configuration Example**
 
-A complete page server configuration might look like this:
+A complete page node configuration might look like this:
 
 .. code:: text
 
   [rngit]
-  node_name = My Git Server
+  node_name = My Git Node
   announce_interval = 360
   record_stats = yes
 
@@ -297,7 +297,7 @@ If no ``$EDITOR`` environment variable is set, ``rngit`` will try to use ``nano`
 
 **Release Storage & Structure**
 
-Releases are stored on the server in a directory named ``repo_name.releases`` next to the bare repository. Each release is a subdirectory containing:
+Releases are stored on the node in a directory named ``repo_name.releases`` next to the bare repository. Each release is a subdirectory containing:
 
 - ``META`` - Release metadata in ConfigObj format
 - ``RELEASE.md`` or ``RELEASE.mu`` - Release notes
@@ -373,7 +373,7 @@ Release management requires the ``release`` permission, configured the same way 
 
 **Nomad Network Interface**
 
-When the Nomad Network page server is enabled, releases are displayed on a dedicated releases page for each repository. Each release is listed with its tag, creation date, artifact count and a preview of the release notes. Clicking a release shows the full details including formatted release notes and a listing of all artifacts with their sizes.
+When the Nomad Network page node is enabled, releases are displayed on a dedicated releases page for each repository. Each release is listed with its tag, creation date, artifact count and a preview of the release notes. Clicking a release shows the full details including formatted release notes and a listing of all artifacts with their sizes.
 
 Only releases with ``published`` status are visible through the Nomad Network interface. Draft releases (if supported in future implementations) would only be visible through the command-line interface.
 
@@ -542,7 +542,7 @@ Each document is a numbered directory containing:
 
 **Nomad Network Interface**
 
-When the Nomad Network page server is enabled, work documents are viewable through the web interface. The work page lists all documents with their status, and clicking a document shows its full content and updates.
+When the Nomad Network page node is enabled, work documents are viewable through the web interface. The work page lists all documents with their status, and clicking a document shows its full content and updates.
 
 **All Command-Line Options (rngit work)**
 
