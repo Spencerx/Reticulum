@@ -691,9 +691,6 @@ class Resource:
                         RNS.log(f"Decompressed resource exceeded maximum decompressed size. The resource was rejected.", RNS.LOG_ERROR)
                         return
 
-                if self.compressed: self.data = bz2.decompress(data)
-                else: self.data = data
-
                 calculated_hash = RNS.Identity.full_hash(self.data+self.random_hash)
                 if calculated_hash == self.hash:
                     if self.has_metadata and self.segment_index == 1:
