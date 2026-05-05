@@ -59,6 +59,9 @@ class MarkdownToMicron:
     TABLE_ROW_RE = re.compile(r'^\s*\|?(.+?)\|?\s*$')
     TABLE_SEP_RE = re.compile(r'^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$')
     
+    # Quote pattern
+    QUOTE_RE = re.compile(r'^>\s?(.*)$')
+    
     # Inline patterns (processed in order of specificity)
     LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
     INLINE_CODE_RE = re.compile(r'`([^`]+)`')
@@ -106,6 +109,25 @@ class MarkdownToMicron:
         code_buffer = []
         in_table = False
         table_buffer = []
+        in_quote = False
+        quote_buffer = []
+        
+        def flush_quote_buffer():
+            nonlocal result_lines, quote_buffer, in_quote
+            if not quote_buffer:
+                in_quote = False
+                return
+            
+            para = " ".join(quote_buffer)
+            formatted = self._format_inline(para)
+            
+            effective_width = self.max_width - 3
+            if effective_width < 1: effective_width = 1
+            wrapped_lines = self._wrap_text(formatted, effective_width)
+            for wrapped_line in wrapped_lines: result_lines.append(f" │ {wrapped_line}")
+            
+            quote_buffer = []
+            in_quote = False
         
         def flush_table_buffer():
             nonlocal result_lines, table_buffer, in_table
@@ -157,7 +179,8 @@ class MarkdownToMicron:
             is_fence, lang_hint = self._detect_code_fence(line)
             
             if is_fence:
-                # Flush any pending table before code fence
+                # Flush any pending structures before code fence
+                flush_quote_buffer()
                 flush_table_buffer()
                 
                 if not in_code_block:
@@ -173,28 +196,51 @@ class MarkdownToMicron:
                     code_block_lang = None
             
             else:
-                if in_code_block:
-                    # Buffer code lines for later highlighting
-                    code_buffer.append(line)
+                # Buffer code lines for later highlighting
+                if in_code_block: code_buffer.append(line)
                 else:
-                    if self._is_table_row(line):
-                        if not in_table:
-                            in_table = True
-                            table_buffer = [line]
+                    quote_match = self.QUOTE_RE.match(line)
+                    if quote_match:
+                        if not in_quote:
+                            flush_table_buffer()
+                            in_quote = True
+                            quote_buffer = []
                         
-                        else: table_buffer.append(line)
+                        quote_buffer.append(quote_match.group(1))
                     
                     else:
-                        # Line breaks table, flush buffer
-                        if in_table: flush_table_buffer()
-                        formatted = self.format_line(line)
-                        result_lines.append(formatted)
+                        if in_quote:
+                            flush_quote_buffer()
+                            if line.strip() != "":
+                                if self._is_table_row(line):
+                                    in_table = True
+                                    table_buffer = [line]
+                                
+                                else:
+                                    formatted = self.format_line(line)
+                                    result_lines.append(formatted)
+                            
+                            # Pass through blank line as separator
+                            else: result_lines.append("")
+                        
+                        else:
+                            if self._is_table_row(line):
+                                if not in_table:
+                                    in_table = True
+                                    table_buffer = [line]
+                                
+                                else: table_buffer.append(line)
+                            
+                            else:
+                                # Line breaks table, flush buffer
+                                if in_table: flush_table_buffer()
+                                formatted = self.format_line(line)
+                                result_lines.append(formatted)
         
         # Handle unclosed structures
+        if in_quote: flush_quote_buffer()
         if in_table: flush_table_buffer()
-        if in_code_block:
-            # Unclosed code block, flush what we have
-            flush_code_block()
+        if in_code_block: flush_code_block()
         
         return '\n'.join(result_lines)
     
@@ -581,6 +627,71 @@ class MarkdownToMicron:
         
         truncated = stripped[:width - 1] + "…"
         return truncated
+    
+    def _wrap_text(self, text, width):
+        if not text: return [""]
+        
+        words = text.split(' ')
+        lines = []
+        current_line = ""
+        current_width = 0
+        
+        for word in words:
+            if not word: continue
+            
+            word_width = self._visible_width(word)
+            
+            # Check if word alone exceeds width to force break it
+            if word_width > width:
+                if current_line:
+                    lines.append(current_line)
+                    current_line = ""
+                    current_width = 0
+                
+                # Force break the long word character by character
+                remaining = word
+                while remaining:
+                    # Binary search for how many characters fit
+                    low, high = 1, len(remaining)
+                    fit_chars = 0
+                    
+                    while low <= high:
+                        mid = (low + high) // 2
+                        test_substr = remaining[:mid]
+                        test_width = self._visible_width(test_substr)
+                        
+                        if test_width <= width:
+                            fit_chars = mid
+                            low = mid + 1
+                        else:
+                            high = mid - 1
+                    
+                    if fit_chars == 0: fit_chars = 1 # Need to force progress
+                    
+                    lines.append(remaining[:fit_chars])
+                    remaining = remaining[fit_chars:]
+                
+                continue
+            
+            # Check if word fits on current line
+            space_width = 1 if current_line else 0
+            if current_width + space_width + word_width <= width:
+                if current_line:
+                    current_line += " " + word
+                    current_width += space_width + word_width
+                else:
+                    current_line = word
+                    current_width = word_width
+            else:
+                # Flush current line and start new one
+                lines.append(current_line)
+                current_line = word
+                current_width = word_width
+        
+        # Don't forget the last line
+        if current_line: lines.append(current_line)
+        
+        return lines if lines else [""]
 
 
 def convert_markdown_to_micron(text):
