@@ -458,8 +458,9 @@ class NomadNetworkNode():
             content_parts.append(self.m_divider())
         
         else:
-            content_parts.append(self.m_italic("No README file found in this repository."))
+            content_parts.append(self.m_divider())
             content_parts.append("\n")
+            content_parts.append(self.m_italic("No README file found in this repository."))
 
         content_parts.append("\n")
 
