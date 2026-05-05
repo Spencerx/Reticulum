@@ -1,3 +1,28 @@
+### 2026-05-05: RNS 1.2.3
+
+This release adds Work Document and update/commenting support to `rngit`. 
+
+**Changes**
+- Added Work Document management to `rngit`.
+- Added Work pages to the page node of `rngit`.
+- Added `interact` permission type to `rngit`.
+- Added `admin` permission type to `rngit`.
+- Added markdown blockquote support to the `rngit` markdown-to-micron converter.
+- Improved markdown-to-micron conversion and syntax highlighting accuracy in `rngit`.
+
+**Release Hashes**
+```
+8562130f297a6b33be9d72c449bbe6ae83cad41e1530e0fa112f5fa545a3f364 rns-1.2.3-py3-none-any.whl
+0862f46a08e610add1bcac0916c6554f3e79590ab2765900178d5e1f1f0c7026 rnspure-1.2.3-py3-none-any.whl
+```
+
+**Release Signatures**
+Release artifacts include `rsg` signature files that can be validated against the RNS release signing identity `<bc7291552be7a58f361522990465165c>` using `rnid`:
+
+```sh
+rnid -i bc7291552be7a58f361522990465165c -V rns-1.2.2-py3-none-any.whl.rsg
+```
+
 ### 2026-05-05: RNS 1.2.2
 
 This release adds release management workflows to the `rngit` utility. Downloading files and release artifacts from `rngit` will require the latest version of Nomad Network. Other nomadnet clients *may* have to update their file download link handling, if they don't already support passing query parameters for file download links.
