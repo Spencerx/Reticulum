@@ -237,13 +237,23 @@ class MicronFormatter:
                 
                 if color and value:
                     escaped = self._escape_value(value)
-                    output_parts.append(f"`FT{color}{escaped}`f")
+                    if escaped.startswith("\n"): ilb = "\n"; escaped = escaped[1:]
+                    else:                        ilb = ""
+                    if escaped.endswith("\n"):   tlb = "\n"; escaped = escaped[:-1]
+                    else:                        tlb = ""
+                    output_parts.append(f"{ilb}`FT{color}{escaped}`f{tlb}")
                 
                 else: output_parts.append(self._escape_value(value))
             
             prev_was_dot = is_dot
         
-        outfile.write("".join(output_parts))
+        output = "".join(output_parts)
+        final_output = ""
+        for line in output.splitlines():
+            if line.startswith(">"): line = f"`>{line}"
+            final_output += f"{line}\n"
+
+        outfile.write(final_output)
     
     def _get_color_key_for_token(self, ttype):
         token_parts = []

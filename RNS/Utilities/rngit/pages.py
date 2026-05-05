@@ -709,14 +709,14 @@ class NomadNetworkNode():
                 content = self.get_blob_content(repo_path, resolved_ref, file_path)
                 if content is not None:
                     if renderable and render:
-                        if   file_ext == ".mu": content_parts.append(f"{content}\n")
-                        elif file_ext == ".md": content_parts.append(f"{self.mdc.format_block(content)}\n")
+                        if   file_ext == ".mu": content_parts.append(f"{content.rstrip()}\n")
+                        elif file_ext == ".md": content_parts.append(f"{self.mdc.format_block(content).rstrip()}\n")
                         else                  : content_parts.append(f"`=\n{content}\n`=")
 
                     else:
                         if self.highlight_syntax:
-                            highlighted = self.highlighter.highlight(content, file_path)
-                            content_parts.append(highlighted)
+                            highlighted = self.highlighter.highlight(content, file_path).rstrip()
+                            content_parts.append(highlighted+"\n")
                         
                         else: content_parts.append(f"`=\n{content}\n`=")
                 

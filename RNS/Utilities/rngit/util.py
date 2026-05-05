@@ -315,7 +315,7 @@ class MarkdownToMicron:
         content = match.group(2)
         level = len(hashes)
         prefix = ">" * min(level, 6)
-        return f"{prefix}{content}"
+        return f"{prefix}{self._format_inline(content)}"
     
     def _format_list_item(self, match):
         indent = match.group(1)
