@@ -58,6 +58,8 @@ class NomadNetworkNode():
     PATH_STATS            = "/page/stats.mu"
     PATH_RELEASES         = "/page/releases.mu"
     PATH_RELEASE          = "/page/release.mu"
+    PATH_WORK             = "/page/work.mu"
+    PATH_WORK_DOC         = "/page/work_doc.mu"
     PATH_ARTIFACT         = "/file/artifact"
     PATH_DOWNLOAD         = "/file/download"
 
@@ -78,6 +80,7 @@ class NomadNetworkNode():
     U_ICON_STATS    = "🗠"
     U_ICON_HEART    = "♥"
     U_ICON_PACKAGE  = "◇"
+    U_ICON_WORK    = "☸"
 
     NF_ICON_SEP     = "•"
     NF_ICON_FOLDER  = "󰉖"
@@ -88,6 +91,7 @@ class NomadNetworkNode():
     NF_ICON_STATS   = ""
     NF_ICON_HEART   = "󰋑"
     NF_ICON_PACKAGE = "󰏗"
+    NF_ICON_WORK    = "󱌣"
 
     CLR_FOLDER      = "`Ffe6"
     CLR_FILE        = "`F66d"
@@ -122,6 +126,8 @@ class NomadNetworkNode():
         self.templates["commit"]   = DEFAULT_COMMIT_TEMPLATE
         self.templates["refs"]     = DEFAULT_REFS_TEMPLATE
         self.templates["stats"]    = DEFAULT_STATS_TEMPLATE
+        self.templates["work"]     = DEFAULT_WORK_TEMPLATE
+        self.templates["work_doc"] = DEFAULT_WORK_DOC_TEMPLATE
         self.templatesdir          = self.owner.configdir+"/templates"
         self.use_nerdfonts         = self.USE_NERDFONTS
         self.highlight_syntax      = True
@@ -160,6 +166,7 @@ class NomadNetworkNode():
             elif name == "stats":   return self.NF_ICON_STATS
             elif name == "heart":   return self.NF_ICON_HEART
             elif name == "package": return self.NF_ICON_PACKAGE
+            elif name == "work":    return self.NF_ICON_WORK
             else:                   return ""
 
         else:
@@ -172,6 +179,7 @@ class NomadNetworkNode():
             elif name == "stats":   return self.U_ICON_STATS
             elif name == "heart":   return self.U_ICON_HEART
             elif name == "package": return self.U_ICON_PACKAGE
+            elif name == "work":    return self.U_ICON_WORK
             else:                   return ""
 
     def jobs(self):
@@ -207,6 +215,8 @@ class NomadNetworkNode():
         self.destination.register_request_handler(self.PATH_STATS,    response_generator=self.serve_stats_page,    allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_RELEASES, response_generator=self.serve_releases_page, allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_RELEASE,  response_generator=self.serve_release_page,  allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_WORK,     response_generator=self.serve_work_page,     allow=RNS.Destination.ALLOW_ALL)
+        self.destination.register_request_handler(self.PATH_WORK_DOC, response_generator=self.serve_work_doc_page, allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_ARTIFACT, response_generator=self.serve_artifact,      allow=RNS.Destination.ALLOW_ALL)
         self.destination.register_request_handler(self.PATH_DOWNLOAD, response_generator=self.serve_download,      allow=RNS.Destination.ALLOW_ALL)
 
@@ -331,7 +341,7 @@ class NomadNetworkNode():
         group_name = data.get("var_g", "") if data else ""
 
         if not group_name:
-            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
             return self.render_template(content, st=st)
 
         accessible_repos = self.get_accessible_repositories(remote_identity, group_name)
@@ -377,7 +387,7 @@ class NomadNetworkNode():
         thanks = True if data.get("var_thanks", "") else False
 
         if not group_name or not repo_name:
-            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
             return self.render_template(content, st=st)
         
         content_parts = []
@@ -408,6 +418,11 @@ class NomadNetworkNode():
         commits_count = self.get_commit_count(repo["path"], resolved_ref) if resolved_ref else 0
         branch_count = len(refs.get("heads", [])) if refs else 0
         tag_count = len(refs["tags"]) if refs else 0
+
+        active_work_dir = repo["path"]+".work/active"
+        if not os.path.isdir(active_work_dir): work_count = 0
+        else:
+            work_count = len([f for f in os.listdir(active_work_dir) if f.isdigit() and os.path.isdir(os.path.join(active_work_dir, f))])
         
         # Get releases count
         releases_path = f"{repo['path']}.releases"
@@ -418,6 +433,7 @@ class NomadNetworkNode():
         sep = self.icon("sep")
         content_parts.append(f"{self.m_link_r(self.icon("folder")+" Files", self.PATH_TREE, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
         if releases_count: content_parts.append(f"{self.m_link_r(self.icon("package")+f" Releases ({releases_count})", self.PATH_RELEASES, g=group_name, r=repo_name)} {sep} ")
+        content_parts.append(f"{self.m_link_r(self.icon("work")+f" Work ({work_count})", self.PATH_WORK, g=group_name, r=repo_name)} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("commits")+f" Commits ({commits_count})", self.PATH_COMMITS, g=group_name, r=repo_name, ref='HEAD')} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("branch")+f" Branches ({branch_count})", self.PATH_REFS, g=group_name, r=repo_name, type="heads")} {sep} ")
         content_parts.append(f"{self.m_link_r(self.icon("tag")+f" Tags ({tag_count})", self.PATH_REFS, g=group_name, r=repo_name, type="tags")} {sep} ")
@@ -803,7 +819,7 @@ class NomadNetworkNode():
         commit_hash = data.get("var_h", "") if data else ""
 
         if not group_name or not repo_name:
-            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
             return self.render_template(content, st=st)
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
@@ -945,7 +961,7 @@ class NomadNetworkNode():
         nav_content = "".join(nav_parts)
 
         if not group_name or not repo_name:
-            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
             return self.render_template(content, st=st)
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
@@ -1039,7 +1055,7 @@ class NomadNetworkNode():
         repo_name = data.get("var_r", "") if data else ""
 
         if not group_name or not repo_name:
-            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
             return self.render_template(content, st=st)
         
         content_parts = []
@@ -1123,7 +1139,7 @@ class NomadNetworkNode():
         repo_name  = data.get("var_r", "") if data else ""
 
         if not group_name or not repo_name:
-            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
             return self.render_template(content, st=st)
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
@@ -1182,7 +1198,7 @@ class NomadNetworkNode():
         tag = data.get("var_t", "") if data else ""
 
         if not group_name or not repo_name or not tag:
-            content = self.m_heading("Error", 2) + "\nInvalid request.\n"
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
             return self.render_template(content, st=st)
 
         repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
@@ -1269,6 +1285,209 @@ class NomadNetworkNode():
         self.owner.view_succeeded(group_name, repo_name, remote_identity)
         page_content = "".join(content_parts)
         return self.render_template(page_content, nav_content=nav_content, template="release", st=st)
+
+    def serve_work_page(self, path, data, request_id, link_id, remote_identity, requested_at):
+        st = time.time()
+        RNS.log(f"Work page request from {remote_identity}", RNS.LOG_DEBUG)
+
+        if not data: data = {}
+        group_name = data.get("var_g", "") if data else ""
+        repo_name  = data.get("var_r", "") if data else ""
+        scope      = data.get("var_scope", "active") if data else "active"
+        if scope not in ["active", "completed", "all"]: scope = "active"
+
+        if not group_name or not repo_name:
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
+            return self.render_template(content, st=st)
+
+        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
+        if not repo:
+            content = self.m_heading("Error", 2) + "\nThe requested repository was not found.\n"
+            return self.render_template(content, st=st)
+
+        content_parts = []
+        nav_parts = []
+
+        # Breadcrumb navigation
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / work"
+        nav_parts.append(breadcrumb + "\n")
+        nav_content = "".join(nav_parts)
+
+        # Scope filter links
+        sep = self.icon("sep")
+        active_s = "`_" if scope == "active" else ""
+        cmplt_s = "`_" if scope == "completed" else ""
+        all_s = "`_" if scope == "all" else ""
+        filter_links = []
+        filter_links.append(active_s+self.m_link("Active", self.PATH_WORK, g=group_name, r=repo_name, scope="active")+active_s)
+        filter_links.append(cmplt_s+self.m_link("Completed", self.PATH_WORK, g=group_name, r=repo_name, scope="completed")+cmplt_s)
+        filter_links.append(all_s+self.m_link("All", self.PATH_WORK, g=group_name, r=repo_name, scope="all")+all_s)
+        content_parts.append(f" {sep} ".join(filter_links) + "\n\n")
+
+        # Load work documents
+        work_path = f"{repo['path']}.work"
+        scopes_to_show = ["active", "completed"] if scope == "all" else [scope]
+
+        for s in scopes_to_show:
+            folder_path = os.path.join(work_path, s)
+
+            docs = []
+            if os.path.isdir(folder_path):
+                for entry in os.listdir(folder_path):
+                    doc_dir = os.path.join(folder_path, entry)
+                    if not os.path.isdir(doc_dir): continue
+                    try:
+                        doc_id = int(entry)
+                        root_path = os.path.join(doc_dir, "root")
+                        if not os.path.isfile(root_path): continue
+
+                        doc = self.owner._work_load_document(root_path)
+                        if not doc: continue
+
+                        meta = doc.get("meta", {})
+                        comment_count = len([f for f in os.listdir(doc_dir) if f.isdigit() and os.path.isfile(os.path.join(doc_dir, f))])
+
+                        docs.append({ "id": doc_id, "title": meta.get("title", "Untitled"),
+                                      "created": meta.get("created", 0), "author": meta.get("author", b""),
+                                      "comments": comment_count })
+
+                    except: continue
+
+            docs.sort(key=lambda x: x["created"], reverse=True)
+
+            if not docs:
+                content_parts.append(self.m_heading(f"{s.capitalize()} ({len(docs)})", 2)+f"\n`*No {s} work documents`*\n")
+                content_parts.append("\n")
+
+            else:
+                content_parts.append(self.m_heading(f"{s.capitalize()} ({len(docs)})", 2))
+                content_parts.append("\n")
+
+                for doc in docs:
+                    doc_title = str(doc.get('title', 'Untitled')[:92])
+                    if len(doc_title) < len(doc.get('title', 'Untitled')): doc_title += "…"
+                    title_link = self.m_link(self.icon("file")+" "+doc_title, self.PATH_WORK_DOC, g=group_name, r=repo_name, id=doc["id"], scope=s)
+                    author_str = RNS.prettyhexrep(doc["author"]) if doc["author"] else "unknown"
+                    date_str = time.strftime("%Y-%m-%d", time.localtime(doc["created"])) if doc["created"] else ""
+                    content_parts.append(f"{title_link} {self.CLR_DIM}#{doc['id']}`f\n")
+                    content_parts.append(f"{self.CLR_DIM}{date_str} by {author_str}`f\n")
+                    content_parts.append(f"{self.CLR_DIM}{doc['comments']} updates`f\n") if doc['comments'] else None
+                    content_parts.append("\n")
+
+        if content_parts[-1] == "\n": content_parts[-1] = ""
+
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
+        page_content = "".join(content_parts)
+        return self.render_template(page_content, nav_content=nav_content, template="work", st=st)
+
+    def serve_work_doc_page(self, path, data, request_id, link_id, remote_identity, requested_at):
+        st = time.time()
+        RNS.log(f"Work document page request from {remote_identity}", RNS.LOG_DEBUG)
+
+        if not data: data = {}
+        group_name = data.get("var_g", "") if data else ""
+        repo_name  = data.get("var_r", "") if data else ""
+        doc_id     = data.get("var_id", "") if data else ""
+        scope      = data.get("var_scope", "active") if data else "active"
+        if scope not in ["active", "completed", "all"]: scope = "active"
+
+        if not group_name or not repo_name or not doc_id:
+            content = self.m_heading("Error", 2) + "\nInvalid request\n"
+            return self.render_template(content, st=st)
+
+        try: doc_id = int(doc_id)
+        except:
+            content = self.m_heading("Error", 2) + "\nInvalid document ID\n"
+            return self.render_template(content, st=st)
+
+        repo = self.get_accessible_repository(remote_identity, group_name, repo_name)
+        if not repo:
+            content = self.m_heading("Error", 2) + "\nThe requested repository was not found\n"
+            return self.render_template(content, st=st)
+
+        work_path = f"{repo['path']}.work"
+        doc_dir = os.path.join(work_path, scope, str(doc_id))
+        root_path = os.path.join(doc_dir, "root")
+
+        if not os.path.isfile(root_path):
+            content = self.m_heading("Not Found", 2) + "\nThe requested work document was not found\n"
+            return self.render_template(content, st=st)
+
+        doc = self.owner._work_load_document(root_path)
+        if not doc:
+            content = self.m_heading("Error", 2) + "\nCould not load work document\n"
+            return self.render_template(content, st=st)
+
+        content_parts = []
+        nav_parts = []
+
+        # Breadcrumb navigation
+        breadcrumb = f">>\n{self.m_link("Node", self.PATH_INDEX)} / {self.m_link(group_name, self.PATH_GROUP, g=group_name)} / {self.m_link(repo_name, self.PATH_REPO, g=group_name, r=repo_name)} / {self.m_link('work', self.PATH_WORK, g=group_name, r=repo_name)} / #{doc_id}"
+        nav_parts.append(breadcrumb + "\n")
+        nav_content = "".join(nav_parts)
+
+        doc_title = doc['meta'].get('title', 'Untitled')[:64]
+        if len(doc_title) < len(doc['meta'].get('title', 'Untitled')): doc_title += "…"
+        meta = doc.get("meta", {})
+        author = meta.get("author", b"")
+        author_str = RNS.prettyhexrep(author) if author else "Unknown"
+        created = meta.get("created", 0)
+        edited = meta.get("edited", 0)
+        fmt = meta.get("format", "markdown")
+
+        # Document header
+        content_parts.append(self.m_heading(f"{doc_title}", 2))
+        content_parts.append(f"\n{self.CLR_DIM}Author  : {author_str}`f\n")
+        content_parts.append(f"{self.CLR_DIM}Created : {time.strftime('%Y-%m-%d %H:%M', time.localtime(created)) if created else 'unknown'}`f\n")
+        if edited and edited != created:
+            content_parts.append(f"{self.CLR_DIM}Edited  : {time.strftime('%Y-%m-%d %H:%M', time.localtime(edited))}`f\n")
+        content_parts.append(f"{self.CLR_DIM}Status  : {scope.capitalize()}`f\n\n")
+
+        # Document content
+        content = doc.get("content", "").strip()
+        if content:
+            if fmt == "micron": content_parts.append(content)
+            else: content_parts.append(self.mdc.format_block(content))
+            content_parts.append("\n")
+
+        # Load and display comments
+        comments = []
+        if os.path.isdir(doc_dir):
+            for entry in os.listdir(doc_dir):
+                if not entry.isdigit(): continue
+                comment_path = os.path.join(doc_dir, entry)
+                if not os.path.isfile(comment_path): continue
+                try:
+                    comment_id = int(entry)
+                    comment = self.owner._work_load_document(comment_path)
+                    if not comment: continue
+                    cmeta = comment.get("meta", {})
+                    comments.append({
+                        "id": comment_id,
+                        "format": comment.get("format", "markdown"),
+                        "content": comment.get("content", ""),
+                        "created": cmeta.get("created", 0),
+                        "author": cmeta.get("author", b"")
+                    })
+                except: continue
+
+        comments.sort(key=lambda x: x["id"])
+
+        if comments:
+            content_parts.append("\n"+self.m_heading(f"Updates ({len(comments)})", 2))
+
+            for c in comments:
+                fmt = c["format"]
+                if fmt == "markdown": content = self.mdc.format_block(c["content"])
+                else:                 content = c["content"]
+                cauthor_str = RNS.prettyhexrep(c["author"]) if c["author"] else "Unknown"
+                cdate = time.strftime("%Y-%m-%d %H:%M", time.localtime(c["created"])) if c["created"] else "unknown"
+                content_parts.append(f"\n{self.CLR_DIM}#{c['id']} by {cauthor_str} on {cdate}`f\n")
+                content_parts.append(f"{content}\n")
+
+        self.owner.view_succeeded(group_name, repo_name, remote_identity)
+        page_content = "".join(content_parts)
+        return self.render_template(page_content, nav_content=nav_content, template="work_doc", st=st)
 
     def serve_artifact(self, path, data, request_id, link_id, remote_identity, requested_at):
         st = time.time()
@@ -2125,6 +2344,11 @@ DEFAULT_REFS_TEMPLATE = """{PAGE_CONTENT}"""
 
 # Stats page template
 DEFAULT_STATS_TEMPLATE = """{PAGE_CONTENT}"""
+
+# Work page templates
+DEFAULT_WORK_TEMPLATE = """{PAGE_CONTENT}"""
+
+DEFAULT_WORK_DOC_TEMPLATE = """{PAGE_CONTENT}"""
 
 # Fallback template
 FALLBACK_TEMPLATE = """{PAGE_CONTENT}"""

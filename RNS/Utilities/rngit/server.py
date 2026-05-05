@@ -85,12 +85,28 @@ def program_setup(configdir, rnsconfigdir=None, verbosity=0, quietness=0, servic
             elif operation == "delete": git_client.delete_release(remote=task["remote"], target=task["target"])
             else:                       print("Invalid operation"); exit(1)
 
+        elif command == "work":
+            git_client = ReticulumGitClient(configdir=configdir, verbosity=targetverbosity, identitypath=identity)
+            scope = task.get("scope", "active")
+            doc_id = task.get("doc_id")
+            title = task.get("title")
+            
+            if   operation == "list":     git_client.list_work(remote=task["remote"], scope=scope)
+            elif operation == "view":     git_client.view_work(remote=task["remote"], doc_id=doc_id, scope=scope)
+            elif operation == "create":   git_client.create_work(remote=task["remote"], title=title)
+            elif operation == "edit":     git_client.edit_work(remote=task["remote"], doc_id=doc_id, scope=scope)
+            elif operation == "delete":   git_client.delete_work(remote=task["remote"], doc_id=doc_id, scope=scope)
+            elif operation == "update":   git_client.comment_work(remote=task["remote"], doc_id=doc_id, scope=scope)
+            elif operation == "complete": git_client.complete_work(remote=task["remote"], doc_id=doc_id)
+            elif operation == "activate": git_client.activate_work(remote=task["remote"], doc_id=doc_id)
+            else:                         print("Invalid operation"); exit(1)
+
         else: print("Invalid command"); exit(1)
 
     exit(0)
 
 def main():
-    subcommands = ["node", "release"]
+    subcommands = ["node", "release", "work"]
     try:
         if len(sys.argv) < 2 or sys.argv[1] not in subcommands: subcommand = "node"
         else:                                      subcommand = sys.argv[1]; sys.argv.pop(1)
@@ -109,9 +125,20 @@ def main():
             parser.add_argument("--config", action="store", default=None, help="path to alternative config directory", type=str)
             parser.add_argument("--rnsconfig", action="store", default=None, help="path to alternative Reticulum config directory", type=str)
             parser.add_argument("-i", "--identity", action="store", metavar="PATH", default=None, help="path to release identity", type=str)
-            parser.add_argument("operation", nargs="?", default=None, help="list, view, create or delete", type=str)
             parser.add_argument("repository", nargs="?", default=None, help="URL of remote repository", type=str)
-            parser.add_argument("target", nargs="?", default=None, help="tag or path to release artifacts directory", type=str)
+            parser.add_argument("operation", nargs="?", default=None, help="list, view, create or delete", type=str)
+            parser.add_argument("target", nargs="?", default=None, help="tag and path to release artifacts directory", type=str)
+
+        elif subcommand == "work":
+            parser = argparse.ArgumentParser(description="Reticulum Git Work Document Manager")
+            parser.add_argument("--config", action="store", default=None, help="path to alternative config directory", type=str)
+            parser.add_argument("--rnsconfig", action="store", default=None, help="path to alternative Reticulum config directory", type=str)
+            parser.add_argument("-i", "--identity", action="store", metavar="PATH", default=None, help="path to identity", type=str)
+            parser.add_argument("--scope", action="store", default="active", help="document scope: active, completed or all", type=str)
+            parser.add_argument("-t", "--title", action="store", default=None, help="document title for create", type=str)
+            parser.add_argument("-d", "--id", action="store", default=None, help="document ID", type=int)
+            parser.add_argument("repository", nargs="?", default=None, help="URL of remote repository", type=str)
+            parser.add_argument("operation", nargs="?", default=None, help="list, view, create, edit, delete, update or complete", type=str)
         
         parser.add_argument('-v', '--verbose', action='count', default=0)
         parser.add_argument('-q', '--quiet', action='count', default=0)
@@ -134,6 +161,12 @@ def main():
             program_setup(configdir = configarg, rnsconfigdir=rnsconfigarg, service=False, verbosity=args.verbose,
                           quietness=args.quiet, interactive=False, print_identity=False, task=task, identity=args.identity)
 
+        elif subcommand == "work":
+            task = {"command": subcommand, "operation": args.operation, "remote": args.repository, 
+                    "scope": args.scope, "doc_id": args.id, "title": args.title}
+            program_setup(configdir = configarg, rnsconfigdir=rnsconfigarg, service=False, verbosity=args.verbose,
+                          quietness=args.quiet, interactive=False, print_identity=False, task=task, identity=args.identity)
+
     except KeyboardInterrupt:
         print("")
         exit()
@@ -146,6 +179,7 @@ class ReticulumGitClient():
     PATH_PUSH       = "/git/push"
     PATH_DELETE     = "/git/delete"
     PATH_RELEASE    = "/mgmt/release"
+    PATH_WORK       = "/mgmt/work"
 
     RES_OK          = 0x00
     RES_DISALLOWED  = 0x01
@@ -302,6 +336,10 @@ class ReticulumGitClient():
         RNS.log(f"Got response for: {path}", RNS.LOG_DEBUG)
         
         return self.request_response, self.response_metadata
+
+    ######################
+    # Release Management #
+    ######################
 
     def _edit_release_notes(self, tag="this release"):
         editor = os.environ.get("EDITOR", "")
@@ -593,6 +631,424 @@ class ReticulumGitClient():
         finally:
             if self.link: self.link.teardown()
 
+    ########################
+    # Work Docs Management #
+    ########################
+
+    def list_work(self, remote=None, scope="active"):
+        if not remote: print(f"No remote specified"); exit(1)
+        self.connect_remote(remote)
+        
+        timeout = self.link_timeout
+        while not self.link_ready and not self.link_failed and timeout > 0:
+            time.sleep(0.1)
+            timeout -= 1
+        
+        if not self.link_ready: self.abort("Link establishment failed")
+        
+        try:
+            destination_hash, group, repo = self.parse_remote_url(remote)
+            repo_path = f"{group}/{repo}"
+            
+            request_data = {self.IDX_REPOSITORY: repo_path, "operation": "list", "scope": scope}
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            print("\r                       \r", end="")
+            
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Server error: {error_msg}")
+            
+            if len(response) > 1: result = mp.unpackb(response[1:])
+            else:                 result = {"active": [], "completed": []}
+
+            scopes_to_show = ["active", "completed"] if scope == "all" else [scope]
+
+            for s in scopes_to_show:
+                docs = result.get(s, [])
+                if docs:
+                    st = f"\n{s.capitalize()} documents"
+                    print(st)
+                    print("="*len(st)); print()
+                    print(f"{'ID':<4} {'Title':<30} {'Author':<17} {'Created':<18} {'Comments'}")
+                    print("-" * 80)
+                    for doc in docs:
+                        doc_id = doc.get("id", "?")
+                        title = doc.get("title", "Untitled")
+                        if len(title) > 29: title = f"{title[:29]}…"
+                        author = doc.get("author", "")[:16]+"…"
+                        created_ts = doc.get("created", 0)
+                        created = time.strftime("%Y-%m-%d %H:%M", time.localtime(created_ts)) if created_ts else "unknown"
+                        comments = doc.get("comments", 0)
+                        print(f"{doc_id:<4} {title:<30} {author:<17} {created:<18} {comments}")
+                    print()
+                elif scope != "all": print(f"No {s} work documents found.")
+            
+            if scope == "all" and not result.get("active") and not result.get("completed"): print("No work documents found.")
+        
+        except Exception as e: self.abort(f"Error listing work documents: {e}")
+        finally:
+            if self.link: self.link.teardown()
+
+    def view_work(self, remote=None, doc_id=None, scope="active"):
+        if not remote: print(f"No remote specified"); exit(1)
+        if doc_id is None: print(f"No document ID specified"); exit(1)
+        self.connect_remote(remote)
+        
+        timeout = self.link_timeout
+        while not self.link_ready and not self.link_failed and timeout > 0:
+            time.sleep(0.5)
+            timeout -= 1
+        
+        if not self.link_ready: self.abort("Link establishment failed")
+        
+        try:
+            destination_hash, group, repo = self.parse_remote_url(remote)
+            repo_path = f"{group}/{repo}"
+            
+            request_data = {self.IDX_REPOSITORY: repo_path, "operation": "view", "doc_id": doc_id, "scope": scope}
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            print("\r                       \r", end="")
+            
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Remote error: {error_msg}")
+            
+            if len(response) <= 1: self.abort("Empty response from remote")
+            
+            doc = mp.unpackb(response[1:])
+            
+            dt = f"{doc['meta']['title']} (#{doc['id']})"
+            print(f"{dt}")
+            print("="*len(dt))
+            print(f"Author   : {doc['meta']['author']}")
+            print(f"Status   : {scope}")
+            print(f"Created  : {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(doc['meta']['created']))}")
+            print(f"Edited   : {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(doc['meta']['edited']))}")
+            print(f"Format   : {doc['meta']['format']}")
+            print(f"Updates  : {len(doc.get('comments', []))}")
+            print()
+            print(doc['content'])
+            
+            comments = doc.get('comments', [])
+            if comments:
+                print("\nUpdates")
+                print("=======")
+                for c in comments:
+                    ts = f"#{c['id']} by {c['author']} at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(c['created']))}"
+                    print(f"\n{ts}")
+                    print("-"*len(ts))
+                    print(c['content'])
+            
+            print()
+        
+        except Exception as e: self.abort(f"Error viewing work document: {e}")
+        finally:
+            if self.link: self.link.teardown()
+
+    def create_work(self, remote=None, title=None):
+        if not remote: print(f"No remote specified"); exit(1)
+        if not title: print(f"No title specified"); exit(1)
+        self.connect_remote(remote)
+        
+        timeout = self.link_timeout
+        while not self.link_ready and not self.link_failed and timeout > 0:
+            time.sleep(0.1)
+            timeout -= 1
+        
+        if not self.link_ready: self.abort("Failed to establish link")
+        print("\r                       \r", end="")
+        
+        try:
+            destination_hash, group, repo = self.parse_remote_url(remote)
+            repo_path = f"{group}/{repo}"
+
+            content = self._edit_work_content(title=title)
+            if content is None: print("Creation cancelled"); return
+            
+            request_data = { self.IDX_REPOSITORY: repo_path,
+                             "operation": "create", "title": title, "content": content, "format": "markdown" }
+            
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Server error: {error_msg}")
+            
+            if len(response) > 1:
+                result = mp.unpackb(response[1:])
+                print(f"Work document created as {result['scope']} #{result['id']}")
+            
+            else: print("Work document created")
+        
+        except Exception as e: self.abort(f"Error creating work document: {e}")
+        finally:
+            if self.link: self.link.teardown()
+
+    def edit_work(self, remote=None, doc_id=None, scope="active"):
+        if not remote: print(f"No remote specified"); exit(1)
+        if doc_id is None: print(f"No document ID specified"); exit(1)
+        self.connect_remote(remote)
+        
+        timeout = self.link_timeout
+        while not self.link_ready and not self.link_failed and timeout > 0:
+            time.sleep(0.2)
+            timeout -= 1
+        
+        if not self.link_ready: self.abort("Failed to establish link")
+        print("\r                       \r", end="")
+        
+        try:
+            destination_hash, group, repo = self.parse_remote_url(remote)
+            repo_path = f"{group}/{repo}"
+
+            request_data = {self.IDX_REPOSITORY: repo_path, "operation": "view", "doc_id": doc_id, "scope": scope}
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Remote error: {error_msg}")
+            
+            doc = mp.unpackb(response[1:])
+            current_content = doc['content']
+            current_title = doc['meta']['title']
+
+            content = self._edit_work_content(title=current_title, content=current_content)
+            if content is None: print("Edit cancelled"); return
+
+            title = current_title
+            request_data = { self.IDX_REPOSITORY: repo_path,
+                             "operation": "edit", "doc_id": doc_id, "scope": scope, "content": content }
+            
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Remote error: {error_msg}")
+            
+            print(f"Work document {scope} #{doc_id} updated")
+        
+        except Exception as e: self.abort(f"Error editing work document: {e}")
+        finally:
+            if self.link: self.link.teardown()
+
+    def delete_work(self, remote=None, doc_id=None, scope="active"):
+        if not remote: print(f"No remote specified"); exit(1)
+        if doc_id is None: print(f"No document ID specified"); exit(1)
+        self.connect_remote(remote)
+        
+        timeout = self.link_timeout
+        while not self.link_ready and not self.link_failed and timeout > 0:
+            time.sleep(0.2)
+            timeout -= 1
+        
+        if not self.link_ready: self.abort("Failed to establish link")
+        print("\r                       \r", end="")
+        
+        try:
+            destination_hash, group, repo = self.parse_remote_url(remote)
+            repo_path = f"{group}/{repo}"
+            
+            print(f"Are you sure you want to delete {scope} work document #{doc_id}? [y/N]: ", end="")
+            try: confirm = input().strip().lower()
+            except EOFError: confirm = "n"
+            
+            if confirm != "y": print("Deletion cancelled"); return
+            
+            request_data = { self.IDX_REPOSITORY: repo_path,
+                             "operation": "delete", "doc_id": doc_id, "scope": scope }
+            
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Remote error: {error_msg}")
+            
+            print(f"Work document {scope} #{doc_id} deleted")
+        
+        except Exception as e: self.abort(f"Error deleting work document: {e}")
+        finally:
+            if self.link: self.link.teardown()
+
+    def comment_work(self, remote=None, doc_id=None, scope="active"):
+        if not remote: print(f"No remote specified"); exit(1)
+        if doc_id is None: print(f"No document ID specified"); exit(1)
+        self.connect_remote(remote)
+        
+        timeout = self.link_timeout
+        while not self.link_ready and not self.link_failed and timeout > 0:
+            time.sleep(0.2)
+            timeout -= 1
+        
+        if not self.link_ready: self.abort("Failed to establish link")
+        print("\r                       \r", end="")
+        
+        try:
+            destination_hash, group, repo = self.parse_remote_url(remote)
+            repo_path = f"{group}/{repo}"
+            
+            # Get content from editor
+            content = self._edit_work_content(title=f"Update on document #{doc_id}", is_comment=True)
+            if content is None: print("Update cancelled"); return
+            
+            request_data = { self.IDX_REPOSITORY: repo_path,
+                             "operation": "comment", "doc_id": doc_id, "scope": scope,
+                             "content": content, "format": "markdown" }
+            
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Remote error: {error_msg}")
+            
+            if len(response) > 1:
+                result = mp.unpackb(response[1:])
+                print(f"Update #{result['id']} added to {scope} document #{doc_id}")
+            
+            else: print("Update added")
+        
+        except Exception as e: self.abort(f"Error adding comment: {e}")
+        finally:
+            if self.link: self.link.teardown()
+
+    def complete_work(self, remote=None, doc_id=None):
+        if not remote:     print(f"No remote specified"); exit(1)
+        if doc_id is None: print(f"No document ID specified"); exit(1)
+        self.connect_remote(remote)
+        
+        timeout = self.link_timeout
+        while not self.link_ready and not self.link_failed and timeout > 0:
+            time.sleep(0.2)
+            timeout -= 1
+        
+        if not self.link_ready: self.abort("Failed to establish link")
+        print("\r                       \r", end="")
+        
+        try:
+            destination_hash, group, repo = self.parse_remote_url(remote)
+            repo_path = f"{group}/{repo}"
+            
+            request_data = {self.IDX_REPOSITORY: repo_path,
+                            "operation": "complete", "doc_id": doc_id}
+            
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Remote error: {error_msg}")
+            
+            if len(response) > 1:
+                result = mp.unpackb(response[1:])
+                print(f"Work document #{result['id']} completed")
+            
+            else: print("Work document completed")
+        
+        except Exception as e: self.abort(f"Error completing work document: {e}")
+        finally:
+            if self.link: self.link.teardown()
+
+    def activate_work(self, remote=None, doc_id=None):
+        if not remote:     print(f"No remote specified"); exit(1)
+        if doc_id is None: print(f"No document ID specified"); exit(1)
+        self.connect_remote(remote)
+        
+        timeout = self.link_timeout
+        while not self.link_ready and not self.link_failed and timeout > 0:
+            time.sleep(0.2)
+            timeout -= 1
+        
+        if not self.link_ready: self.abort("Failed to establish link")
+        print("\r                       \r", end="")
+        
+        try:
+            destination_hash, group, repo = self.parse_remote_url(remote)
+            repo_path = f"{group}/{repo}"
+            
+            request_data = {self.IDX_REPOSITORY: repo_path,
+                            "operation": "activate", "doc_id": doc_id}
+            
+            response, metadata = self.send_request(self.PATH_WORK, request_data, timeout=30)
+            
+            if not response or not isinstance(response, bytes): self.abort("No response from remote")
+            
+            status_byte = response[0]
+            if status_byte != 0:
+                error_msg = response[1:].decode("utf-8", errors="ignore")
+                self.abort(f"Remote error: {error_msg}")
+            
+            if len(response) > 1:
+                result = mp.unpackb(response[1:])
+                print(f"Work document #{result['id']} activated")
+            
+            else: print("Work document activated")
+        
+        except Exception as e: self.abort(f"Error activating work document: {e}")
+        finally:
+            if self.link: self.link.teardown()
+
+    def _edit_work_content(self, title="", content="", is_comment=False):
+        editor = os.environ.get("EDITOR", "")
+        if not editor:
+            for fallback in ["nano", "vim", "vi"]:
+                try:
+                    subprocess.run(["which", fallback], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    editor = fallback
+                    break
+                
+                except subprocess.CalledProcessError: continue
+        
+        if not editor:
+            print("No editor found. Please set $EDITOR environment variable.")
+            return None
+        
+        if is_comment: template = COMMENT_TEMPLATE
+        else:          template = CREATE_DOC_TEMPLATE
+        
+        if content: template = content
+        
+        try:
+            with NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(template)
+            
+            result = subprocess.run([editor, tmp_path])
+            
+            if result.returncode != 0:
+                print(f"Editor exited with error code {result.returncode}")
+                os.unlink(tmp_path)
+                return None
+            
+            with open(tmp_path, "r") as f: edited = f.read()
+            os.unlink(tmp_path)
+            
+            lines = [line for line in edited.split("\n") if not (line.strip().startswith(COMMENT_TEMPLATE) or line.strip().startswith(CREATE_DOC_TEMPLATE))]
+            result = "\n".join(lines).strip()
+            
+            if not result: return None
+            return result
+        
+        except Exception as e:
+            RNS.log(f"Error editing work content: {e}", RNS.LOG_ERROR)
+            return None
+
 class ReticulumGitNode():
     JOBS_INTERVAL   = 5
 
@@ -621,6 +1077,7 @@ class ReticulumGitNode():
     PATH_PUSH       = "/git/push"
     PATH_DELETE     = "/git/delete"
     PATH_RELEASE    = "/mgmt/release"
+    PATH_WORK       = "/mgmt/work"
 
     RES_OK          = 0x00
     RES_DISALLOWED  = 0x01
@@ -630,6 +1087,8 @@ class ReticulumGitNode():
 
     IDX_REPOSITORY  = 0x00
     IDX_RESULT_CODE = 0x01
+
+    WORK_DOC_LIMIT  = 256*1024*1024
 
     def __init__(self, configdir=None, verbosity=None, print_identity=False):
         self.identity            = None
@@ -796,7 +1255,8 @@ class ReticulumGitNode():
                         perm, target = self.parse_permission(entry)
                         if not perm or not target: continue
                         else:
-                            read = False; write = False; create = False; stats = False; release = False
+                            read = False; write = False; create = False;
+                            stats = False; release = False; interact = False
                             if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read     = True
                             if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write    = True
                             if perm == self.PERM_CREATE:                               create   = True
@@ -938,7 +1398,8 @@ class ReticulumGitNode():
                                     perm, target = self.parse_permission(perm_input)
                                     if not perm or not target: continue
                                     else:
-                                        read = False; write = False; create = False; stats = False; release = False
+                                        read = False; write = False; create = False
+                                        stats = False; release = False; interact = False
                                         if perm == self.PERM_READ  or perm == self.PERM_READWRITE: read     = True
                                         if perm == self.PERM_WRITE or perm == self.PERM_READWRITE: write    = True
                                         if perm == self.PERM_CREATE:                               create   = True
@@ -1042,6 +1503,7 @@ class ReticulumGitNode():
         self.destination.register_request_handler(self.PATH_PUSH,    self.handle_push,    allow=self.global_allow, allowed_list=ga_list)
         self.destination.register_request_handler(self.PATH_DELETE,  self.handle_delete,  allow=self.global_allow, allowed_list=ga_list)
         self.destination.register_request_handler(self.PATH_RELEASE, self.handle_release, allow=self.global_allow, allowed_list=ga_list)
+        self.destination.register_request_handler(self.PATH_WORK,    self.handle_work,    allow=self.global_allow, allowed_list=ga_list)
 
     def remote_connected(self, link):
         RNS.log(f"Peer connected to {self.destination}", RNS.LOG_DEBUG)
@@ -1607,6 +2069,371 @@ class ReticulumGitNode():
             RNS.log(f"Error deleting release: {e}", RNS.LOG_ERROR)
             return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
 
+    #########################
+    # Work Document Methods #
+    #########################
+
+    def handle_work(self, path, data, request_id, remote_identity, requested_at):
+        RNS.log(f"Work request from remote {remote_identity}", RNS.LOG_DEBUG)
+        if not remote_identity:             return self.RES_DISALLOWED.to_bytes(1, "big")  + b"Not identified"
+        if not type(data) == dict:          return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+        if not self.IDX_REPOSITORY in data: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No repository specified"
+
+        operation = data.get("operation")
+        if not operation: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+
+        group_name, repository_name = self.parse_request_repository_path(data[self.IDX_REPOSITORY])
+        read_access     = self.resolve_permission(remote_identity, group_name, repository_name, self.PERM_READ)
+        write_access    = self.resolve_permission(remote_identity, group_name, repository_name, self.PERM_WRITE)
+        interact_access = self.resolve_permission(remote_identity, group_name, repository_name, self.PERM_INTERACT)
+        access          = False
+
+        if not read_access: return self.RES_NOT_FOUND.to_bytes(1, "big") + b"Not found"
+
+        comment_access = interact_access and (read_access or write_access)
+        manage_access  = interact_access and write_access
+        
+        if   operation in ["list", "view"]             and read_access:    access = True
+        elif operation in ["comment"]                  and comment_access: access = True
+        elif operation in ["create", "edit", "delete"] and manage_access:  access = True
+        elif operation in ["complete", "activate"]     and manage_access:  access = True
+        else:                                                              access = False
+        
+        if not access: return self.RES_DISALLOWED.to_bytes(1, "big") + b"Not allowed"
+        else:
+            repository_path = self.groups[group_name]["repositories"][repository_name]["path"]
+            work_path       = f"{repository_path}.work"
+
+            try:
+                if   operation == "list"     and read_access:     return self._work_list(work_path, data, remote_identity)
+                elif operation == "view"     and read_access:     return self._work_view(work_path, data, remote_identity)
+                elif operation == "comment"  and comment_access:  return self._work_comment(work_path, data, remote_identity)
+                elif operation == "create"   and manage_access:   return self._work_create(work_path, data, remote_identity)
+                elif operation == "edit"     and manage_access:   return self._work_edit(work_path, data, remote_identity)
+                elif operation == "delete"   and manage_access:   return self._work_delete(work_path, data, remote_identity)
+                elif operation == "complete" and manage_access:   return self._work_complete(work_path, data, remote_identity)
+                elif operation == "activate" and manage_access:   return self._work_activate(work_path, data, remote_identity)
+                else: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+
+            except Exception as e:
+                RNS.log(f"Error while handling work request for {group_name}/{repository_name}: {e}", RNS.LOG_ERROR)
+                return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+    def _work_get_next_id(self, base_path):
+        if not os.path.isdir(base_path): return 1
+        try:
+            entries = [int(d) for d in os.listdir(base_path) if d.isdigit()]
+            if not entries: return 1
+            return max(entries) + 1
+        except: return 1
+
+    def _work_load_document(self, doc_path):
+        try:
+            with open(doc_path, "rb") as f: return mp.unpackb(f.read())
+        except: return None
+
+    def _work_save_document(self, doc_path, document):
+        try:
+            dir_path = os.path.dirname(doc_path)
+            if not os.path.isdir(dir_path): os.makedirs(dir_path, mode=0o755)
+            
+            tmp_path = doc_path + ".tmp"
+            with open(tmp_path, "wb") as f: f.write(mp.packb(document))
+            os.rename(tmp_path, doc_path)
+            return True
+
+        except Exception as e:
+            RNS.log(f"Error persisting work document: {e}", RNS.LOG_ERROR)
+            return False
+
+    def _work_list(self, work_path, data, remote_identity):
+        scope = data.get("scope", "active")
+        
+        result = {"active": [], "completed": []}
+        for folder_name, key in [("active", "active"), ("completed", "completed")]:
+            if scope not in [folder_name, "all"]: continue
+            folder_path = os.path.join(work_path, folder_name)
+            if not os.path.isdir(folder_path): continue
+            
+            for entry in os.listdir(folder_path):
+                doc_dir = os.path.join(folder_path, entry)
+                if not os.path.isdir(doc_dir): continue
+                try:
+                    doc_id = int(entry)
+                    root_path = os.path.join(doc_dir, "root")
+                    if not os.path.isfile(root_path): continue
+                    
+                    doc = self._work_load_document(root_path)
+                    if not doc: continue
+                    
+                    meta = doc.get("meta", {})
+                    comment_count = len([f for f in os.listdir(doc_dir) if f.isdigit() and os.path.isfile(os.path.join(doc_dir, f))])
+                    
+                    result[key].append({ "id": doc_id, "title": meta.get("title", "Untitled"),
+                                         "created": meta.get("created", 0), "edited": meta.get("edited", 0),
+                                         "author": RNS.hexrep(meta.get("author", b""), delimit=False) if meta.get("author") else "",
+                                         "format": meta.get("format", "markdown"), "comments": comment_count })
+                except: continue
+        
+        for key in result: result[key].sort(key=lambda x: x["created"], reverse=True)
+        return b"\x00" + mp.packb(result)
+
+    def _work_view(self, work_path, data, remote_identity):
+        doc_id = data.get("doc_id")
+        scope  = data.get("scope", "active")
+        if not scope in ["active", "completed", "all"]: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+
+        if doc_id is None: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No document ID specified"
+        try: doc_id = int(doc_id)
+        except: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid document ID"
+
+        doc_dir = os.path.join(work_path, scope, str(doc_id))
+        root_path = os.path.join(doc_dir, "root")
+
+        if not os.path.isfile(root_path): return self.RES_NOT_FOUND.to_bytes(1, "big") + b"Document not found"
+
+        doc = self._work_load_document(root_path)
+        if not doc: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + b"Error loading document"
+
+        comments = []
+        if os.path.isdir(doc_dir):
+            for entry in os.listdir(doc_dir):
+                if not entry.isdigit(): continue
+                comment_path = os.path.join(doc_dir, entry)
+                if not os.path.isfile(comment_path): continue
+                try:
+                    comment_id = int(entry)
+                    comment = self._work_load_document(comment_path)
+                    if not comment: continue
+                    meta = comment.get("meta", {})
+                    comments.append({ "id": comment_id, "content": comment.get("content", ""),
+                                      "created": meta.get("created", 0), "edited": meta.get("edited", 0),
+                                      "author": RNS.hexrep(meta.get("author", b""), delimit=False) if meta.get("author") else "",
+                                      "format": meta.get("format", "markdown") })
+                except: continue
+        
+        comments.sort(key=lambda x: x["id"])
+        
+        result = { "id": doc_id, "scope": scope,
+                   "content": doc.get("content", ""), "comments": comments,
+                   "meta": { "title": doc.get("meta", {}).get("title", "Untitled"),
+                             "created": doc.get("meta", {}).get("created", 0),
+                             "edited": doc.get("meta", {}).get("edited", 0),
+                             "author": RNS.hexrep(doc.get("meta", {}).get("author", b""), delimit=False) if doc.get("meta", {}).get("author") else "",
+                             "format": doc.get("meta", {}).get("format", "markdown") } }
+        
+        return b"\x00" + mp.packb(result)
+
+    def _work_create(self, work_path, data, remote_identity):
+        title       = data.get("title", "").strip()
+        content     = data.get("content", "").strip()
+        format_type = data.get("format", "markdown")
+        signature   = data.get("signature", None)
+        limit       = self.WORK_DOC_LIMIT
+
+        if signature and not len(signature) == RNS.Identity.SIGLENGTH: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid signature"
+        if len(title)+len(content)+len(format_type) > limit:           return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Content limit exceeded"
+        if not title:                                                  return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Title is required"
+        if not content:                                                return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Content is required"
+        
+        try:
+            active_path = os.path.join(work_path, "active")
+            completed_path = os.path.join(work_path, "completed")
+            doc_id = max(self._work_get_next_id(active_path), self._work_get_next_id(completed_path))
+            doc_dir = os.path.join(active_path, str(doc_id))
+            
+            now = time.time()
+            document = { "content": content,
+                         "meta": { "format": format_type if format_type in ["markdown", "micron"] else "markdown",
+                                   "title": title, "created": now, "edited": now,
+                                   "signature": signature, "author": remote_identity.hash } }
+            
+            root_path = os.path.join(doc_dir, "root")
+            if not self._work_save_document(root_path, document):
+                return self.RES_REMOTE_FAIL.to_bytes(1, "big") + b"Error saving document"
+            
+            RNS.log(f"Created work document {doc_id} by {RNS.prettyhexrep(remote_identity.hash)}", RNS.LOG_DEBUG)
+            return b"\x00" + mp.packb({"id": doc_id, "scope": "active"})
+        
+        except Exception as e:
+            RNS.log(f"Error creating work document: {e}", RNS.LOG_ERROR)
+            return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+    def _work_edit(self, work_path, data, remote_identity):
+        doc_id    = data.get("doc_id")
+        scope     = data.get("scope", "active")
+        content   = data.get("content")
+        title     = data.get("title")
+        signature = data.get("signature", None)
+        limit     = self.WORK_DOC_LIMIT
+        
+        size = 0
+        if title:   size += len(title)
+        if content: size += len(content)
+
+        if not scope in ["active", "completed", "all"]:                return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+        if signature and not len(signature) == RNS.Identity.SIGLENGTH: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid signature"
+        if size > limit:                                               return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Content limit exceeded"
+        if content is None and title is None:                          return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No changes specified"
+        if doc_id is None:                                             return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No document ID specified"
+
+        try: doc_id = int(doc_id)
+        except: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid document ID"
+        
+        doc_dir = os.path.join(work_path, scope, str(doc_id))
+        root_path = os.path.join(doc_dir, "root")
+        
+        if not os.path.isfile(root_path): return self.RES_NOT_FOUND.to_bytes(1, "big") + b"Document not found"
+        
+        doc = self._work_load_document(root_path)
+        if not doc: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + b"Error loading document"
+        
+        if doc.get("meta", {}).get("author") != remote_identity.hash: return self.RES_DISALLOWED.to_bytes(1, "big") + b"No access, not author"
+        
+        try:
+            if title is not None: doc["meta"]["title"] = title.strip()
+            if content is not None: doc["content"] = content.strip()
+            doc["meta"]["edited"] = time.time()
+            doc["meta"]["signature"] = signature
+            
+            if not self._work_save_document(root_path, doc): return self.RES_REMOTE_FAIL.to_bytes(1, "big") + b"Error saving document"
+            
+            RNS.log(f"Edited work document {doc_id} by {RNS.prettyhexrep(remote_identity.hash)}", RNS.LOG_DEBUG)
+            return b"\x00"
+        
+        except Exception as e:
+            RNS.log(f"Error editing work document: {e}", RNS.LOG_ERROR)
+            return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+    def _work_delete(self, work_path, data, remote_identity):
+        doc_id = data.get("doc_id")
+        scope  = data.get("scope", "active")
+        
+        if not scope in ["active", "completed", "all"]: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+        if doc_id is None:                              return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No document ID specified"
+        
+        try: doc_id = int(doc_id)
+        except: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid document ID"
+        
+        doc_dir = os.path.join(work_path, scope, str(doc_id))
+        root_path = os.path.join(doc_dir, "root")
+        
+        if not os.path.isfile(root_path): return self.RES_NOT_FOUND.to_bytes(1, "big") + b"Document not found"
+        
+        doc = self._work_load_document(root_path)
+        if not doc: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + b"Error loading document"
+        
+        if doc.get("meta", {}).get("author") != remote_identity.hash: return self.RES_DISALLOWED.to_bytes(1, "big") + b"No access, not author"
+        
+        try:
+            shutil.rmtree(doc_dir)
+            RNS.log(f"Deleted work document {doc_id} by {RNS.prettyhexrep(remote_identity.hash)}", RNS.LOG_DEBUG)
+            return b"\x00"
+        
+        except Exception as e:
+            RNS.log(f"Error deleting work document: {e}", RNS.LOG_ERROR)
+            return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+    def _work_comment(self, work_path, data, remote_identity):
+        doc_id      = data.get("doc_id")
+        scope       = data.get("scope", "active")
+        content     = data.get("content", "").strip()
+        signature   = data.get("signature", None)
+        format_type = data.get("format", "markdown")
+        limit       = self.WORK_DOC_LIMIT
+        size        = len(content)
+
+        if not scope in ["active", "completed", "all"]: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid request"
+        if size > limit:                                return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Content limit exceeded"
+        if doc_id is None:                              return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No document ID specified"
+        
+        try: doc_id = int(doc_id)
+        except: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid document ID"
+        
+        if not content: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Content is required"
+        
+        doc_dir = os.path.join(work_path, scope, str(doc_id))
+        root_path = os.path.join(doc_dir, "root")
+        
+        if not os.path.isfile(root_path): return self.RES_NOT_FOUND.to_bytes(1, "big") + b"Document not found"
+        
+        try:
+            comment_id = self._work_get_next_id(doc_dir)
+            now = time.time()
+            
+            comment = { "content": content,
+                        "meta": { "format": format_type if format_type in ["markdown", "micron"] else "markdown",
+                                  "title": None, "created": now, "edited": now,
+                                  "signature": signature, "author": remote_identity.hash } }
+            
+            comment_path = os.path.join(doc_dir, str(comment_id))
+            if not self._work_save_document(comment_path, comment): return self.RES_REMOTE_FAIL.to_bytes(1, "big") + b"Error saving comment"
+            
+            RNS.log(f"Added comment {comment_id} to work document {doc_id} by {RNS.prettyhexrep(remote_identity.hash)}", RNS.LOG_DEBUG)
+            return b"\x00" + mp.packb({"id": comment_id})
+        
+        except Exception as e:
+            RNS.log(f"Error adding comment: {e}", RNS.LOG_ERROR)
+            return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+    def _work_complete(self, work_path, data, remote_identity):
+        doc_id = data.get("doc_id")
+        
+        if doc_id is None: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No document ID specified"
+        try: doc_id = int(doc_id)
+        except: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid document ID"
+        
+        active_dir = os.path.join(work_path, "active", str(doc_id))
+        completed_base = os.path.join(work_path, "completed")
+        
+        if not os.path.isdir(active_dir): return self.RES_NOT_FOUND.to_bytes(1, "big") + b"Document not found"
+        
+        root_path = os.path.join(active_dir, "root")
+        doc = self._work_load_document(root_path)
+        if not doc: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + b"Error loading document"
+        
+        if doc.get("meta", {}).get("author") != remote_identity.hash: return self.RES_DISALLOWED.to_bytes(1, "big") + b"No access, not author"
+        
+        try:
+            completed_dir = os.path.join(completed_base, str(doc_id))
+            shutil.move(active_dir, completed_dir)
+            
+            RNS.log(f"Completed work document {doc_id} by {RNS.prettyhexrep(remote_identity.hash)}", RNS.LOG_DEBUG)
+            return b"\x00" + mp.packb({"id": doc_id, "scope": "completed"})
+        
+        except Exception as e:
+            RNS.log(f"Error completing work document: {e}", RNS.LOG_ERROR)
+            return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
+    def _work_activate(self, work_path, data, remote_identity):
+        doc_id = data.get("doc_id")
+        
+        if doc_id is None: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"No document ID specified"
+        try: doc_id = int(doc_id)
+        except: return self.RES_INVALID_REQ.to_bytes(1, "big") + b"Invalid document ID"
+        
+        completed_dir = os.path.join(work_path, "completed", str(doc_id))
+        active_base = os.path.join(work_path, "active")
+        
+        if not os.path.isdir(completed_dir): return self.RES_NOT_FOUND.to_bytes(1, "big") + b"Document not found"
+        
+        root_path = os.path.join(completed_dir, "root")
+        doc = self._work_load_document(root_path)
+        if not doc: return self.RES_REMOTE_FAIL.to_bytes(1, "big") + b"Error loading document"
+        
+        if doc.get("meta", {}).get("author") != remote_identity.hash: return self.RES_DISALLOWED.to_bytes(1, "big") + b"No access, not author"
+        
+        try:
+            active_dir = os.path.join(active_base, str(doc_id))
+            shutil.move(completed_dir, active_dir)
+            
+            RNS.log(f"Activated work document {doc_id} by {RNS.prettyhexrep(remote_identity.hash)}", RNS.LOG_DEBUG)
+            return b"\x00" + mp.packb({"id": doc_id, "scope": "active"})
+        
+        except Exception as e:
+            RNS.log(f"Error activating work document: {e}", RNS.LOG_ERROR)
+            return self.RES_REMOTE_FAIL.to_bytes(1, "big") + str(e).encode("utf-8")
+
     def repository_stats(self, remote_identity, group_name, repository_name, lookback_days=14):
         if not self.resolve_permission(remote_identity, group_name, repository_name, self.PERM_STATS): return None
         else:
@@ -1845,6 +2672,15 @@ internal = rw:9710b86ba12c42d1d8f30f74fe509286
 # figured repository collection paths have no permissions
 # enabled, and will be neither readable nor writable.
 #
+# The following permissions are supported:
+#   r   = read       (clone, fetch, view)
+#   w   = write      (push, create and manage work documents)
+#   rw  = read/write
+#   c   = create     (create new repositories in group)
+#   s   = stats      (view repository statistics)
+#   rel = release    (create and manage releases)
+#   i   = interact   (comment on work documents)
+#
 # To configure permissions per repository, you must create
 # an ".allowed" file matching the repository name. If the
 # repository is in a folder called "my_project.git", create
@@ -1878,10 +2714,11 @@ internal = rw:9710b86ba12c42d1d8f30f74fe509286
 # a corresponding "template_name.mu" file in the
 # ~/.rngit/templates directory. The supported template
 # names are "base", "front", "group", "repo", "tree",
-# "blob", "commits", "commit", "refs" and "stats". You
-# should include a {PAGE_CONTENT} variable somewhere in
-# your templates, the rendered page content will be
-# injected into this variable.
+# "blob", "commits", "commit", "refs", "stats", "releases",
+# "release", "work" and "work_doc". You should include a
+# {PAGE_CONTENT} variable somewhere in your templates,
+# the rendered page content will be injected into this
+# variable.
 
 # serve_nomadnet = no
 
@@ -1910,5 +2747,8 @@ RELEASE_NOTES_TEMPLATE = """# Enter release notes for {TAG}.
 # Lines starting with '#' will be ignored.
 # Save and exit the editor when done, or exit without saving to abort.
 """
+
+COMMENT_TEMPLATE = "# Remove this line and enter your update. Save and exit when done, or save an empty document to abort abort."
+CREATE_DOC_TEMPLATE = "# Remove this line and enter your document content. Save and exit when done, or save an empty document to abort abort."
 
 if __name__ == "__main__": main()

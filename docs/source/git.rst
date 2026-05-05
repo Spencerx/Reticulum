@@ -284,7 +284,7 @@ To create a release, specify the tag name and path to artifacts:
 
 .. code:: text
 
-  $ rngit release create rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo v1.2.0:./dist
+  $ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo create v1.2.0:./dist
 
 This will:
 
@@ -310,7 +310,7 @@ To view all releases for a repository:
 
 .. code:: text
 
-  $ rngit release list rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo
+  $ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo list
 
   Tag          Status     Created              Objs  Notes
   ------------------------------------------------------------------
@@ -324,7 +324,7 @@ To see full information about a specific release:
 
 .. code:: text
 
-  $ rngit release view rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo v1.2.0
+  $ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo view v1.2.0
 
   Release : 0.9.2        
   Status  : published
@@ -348,7 +348,7 @@ To remove a release:
 
 .. code:: text
 
-  $ rngit release delete rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo v1.2.0
+  $ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo delete v1.2.0
 
   Are you sure you want to delete release 'v1.2.0'? [y/N]: y
   Release v1.2.0 deleted
@@ -382,23 +382,192 @@ Only releases with ``published`` status are visible through the Nomad Network in
 .. code:: text
 
   usage: rngit release [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
-                       [-i IDENTITY] [-v] [-q] [--version]
-                       operation repository [target]
+                       [-i PATH] [-v] [-q] [--version]
+                       [repository] [operation] [target]
 
   Reticulum Git Release Manager
 
   positional arguments:
+    repository            URL of remote repository
     operation             list, view, create or delete
-    repository            URL of remote repository (rns://hash/group/repo)
-    target                tag or tag:path for create, tag for view/delete
+    target                tag and path to release artifacts directory
 
   options:
     -h, --help            show this help message and exit
     --config CONFIG       path to alternative config directory
     --rnsconfig RNSCONFIG
                           path to alternative Reticulum config directory
-    -i IDENTITY, --identity IDENTITY
-                          path to release identity
-    -v, --verbose         increase verbosity
-    -q, --quiet           decrease verbosity
+    -i, --identity PATH   path to release identity
+    -v, --verbose
+    -q, --quiet
+    --version             show program's version number and exit
+
+
+Work Documents
+==============
+
+In addition to releases, ``rngit`` provides a work document management system for tracking tasks, investigations, issues and progress related to repositories. Work documents are stored as structured msgpack data and support threaded updates and comments.
+
+**Listing Work Documents**
+
+To view work documents for a repository:
+
+.. code:: text
+
+  $ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo list
+
+  Active documents
+  =================
+
+  ID   Title                    Author             Created           Comments
+  ---------------------------------------------------------------------------
+  1    Implemented new feature  9710b86ba12c4f2e…  2025-01-15 14:32         3
+  2    Fixed bug in parser      8f3a21c9d84e927b…  2025-01-14 09:15         1
+
+Use ``--scope completed`` to view completed work documents, or ``--scope all`` to see both active and completed.
+
+**Viewing a Work Document**
+
+To view a specific work document with all its comments:
+
+.. code:: text
+
+  $ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo view -d 1
+  
+  Implement new feature (active #1)
+  =================================
+  Author   : 9710b86ba12c42d1d8f30f74fe509286
+  Status   : active
+  Created  : 2026-05-05 15:11:11
+  Edited   : 2026-05-05 18:22:11
+  Format   : markdown
+  Updates  : 0
+
+  This work document tracks the implementation of the new feature...
+
+  Updates
+  =======
+
+  #1 by 9710b86ba12c42d1d8f30f74fe509286 at 2026-05-05 15:38:37
+  -------------------------------------------------------------
+  Initial analysis complete
+
+**Creating Work Documents**
+
+To create a new work document:
+
+.. code:: text
+
+  $ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo create --title "Investigate performance issue"
+
+This will open your configured ``$EDITOR`` to compose the document content. Save and exit to create the document, or save an empty document to cancel.
+
+**Editing Work Documents**
+
+To edit an existing work document:
+
+.. code:: text
+
+  $ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo edit -d 1
+
+This fetches the current content, opens it in your editor, and sends any changes back to the node.
+
+**Adding Comments**
+
+To add an update to a work document:
+
+.. code:: text
+
+  $ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo update -d 1
+
+This opens your editor to compose the update.
+
+**Completing Work Documents**
+
+To mark a work document as completed (moving it from ``active`` to ``completed``):
+
+.. code:: text
+
+  $ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo complete -d 1
+
+  Work document #1 completed
+
+**Activating Work Documents**
+
+To mark a work document as active (moving it from ``completed`` to ``active``):
+
+.. code:: text
+
+  $ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo activate -d 1
+
+  Work document #1 activated
+
+**Deleting Work Documents**
+
+To delete a work document and all its comments:
+
+.. code:: text
+
+  $ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo delete -id 1
+
+  Are you sure you want to delete active work document #1? [y/N]: y
+  Work document #1 deleted
+
+**Permissions**
+
+Users can view work documents and updates if the have ``read`` permission for the repository. If users have ``read`` and ``interact``, they can also post updates/comments on existing work documents. Work document management requires having ``write`` and ``interact`` permission to the repository. These permissions are configured the same way as any other repository permissions. In the config file or ``.allowed`` files, use ``i:target`` to grant work document interaction rights:
+
+.. code:: text
+
+  # In .allowed file or config
+  i:all          # Allow everyone
+  i:9710b86...   # Allow specific identity
+  i:none         # Deny everyone
+
+**Author Verification**
+
+Users can only edit or delete work documents and updates they created. The author is cryptographically verified from the interacting link's ``remote_identity``.
+
+**Storage Format**
+
+Work documents are stored in a ``repo_name.work`` directory next to the repository, containing:
+
+- ``active/`` - Active work documents
+- ``completed/`` - Completed work documents
+
+Each document is a numbered directory containing:
+
+- ``root`` - The work document content and metadata (msgpack format)
+- ``N`` - Numbered comment files (msgpack format)
+
+**Nomad Network Interface**
+
+When the Nomad Network page server is enabled, work documents are viewable through the web interface. The work page lists all documents with their status, and clicking a document shows its full content and updates.
+
+**All Command-Line Options (rngit work)**
+
+.. code:: text
+
+  usage: rngit work [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
+                    [-i PATH] [--scope SCOPE] [-t TITLE] [-d ID] [-v]
+                    [-q] [--version]
+                    [repository] [operation]
+
+  Reticulum Git Work Document Manager
+
+  positional arguments:
+    repository            URL of remote repository
+    operation             list, view, create, edit, delete, update or complete
+
+  options:
+    -h, --help            show this help message and exit
+    --config CONFIG       path to alternative config directory
+    --rnsconfig RNSCONFIG
+                          path to alternative Reticulum config directory
+    -i, --identity PATH   path to identity
+    --scope SCOPE         document scope: active, completed or all
+    -t, --title TITLE     document title for create
+    -d, --id ID           document ID
+    -v, --verbose
+    -q, --quiet
     --version             show program's version number and exit
